@@ -210,6 +210,41 @@ MESSAGES: dict[str, dict[str, str]] = {
         "hi": "पहले डिलीवरी का पता जोड़ें।",
         "bho": "पहिले डिलीवरी के पता जोड़ीं।",
     },
+        "CART_EMPTY": {
+        "en": "Your cart is empty.",
+        "hi": "आपका कार्ट खाली है।",
+        "bho": "रउरा कार्ट खाली बा।",
+    },
+    "CART_HAS_UNAVAILABLE_ITEMS": {
+        "en": "Some items in your cart are not available right now. Please remove them.",
+        "hi": "आपके कार्ट के कुछ आइटम अभी उपलब्ध नहीं हैं। उन्हें हटा दें।",
+        "bho": "रउरा कार्ट के कुछ आइटम अभी मौजूद नइखे। ओकरा के हटा दीं।",
+    },
+    "PRICE_CHANGED": {
+        "en": "The total has changed. Please review your cart and order again.",
+        "hi": "कुल रकम बदल गई है। कार्ट दोबारा देखकर ऑर्डर करें।",
+        "bho": "कुल रकम बदल गइल बा। कार्ट फेर से देखके ऑर्डर करीं।",
+    },
+    "ORDER_ITEMS_CHANGED": {
+        "en": "Stock of some items has just reduced. Please review your cart.",
+        "hi": "कुछ आइटम का स्टॉक अभी कम हो गया है। कार्ट दोबारा देखें।",
+        "bho": "कुछ आइटम के स्टॉक अभी कम हो गइल बा। कार्ट फेर से देखीं।",
+    },
+    "PAYMENT_METHOD_NOT_AVAILABLE": {
+        "en": "This payment method is not available yet.",
+        "hi": "यह भुगतान तरीका अभी उपलब्ध नहीं है।",
+        "bho": "ई भुगतान के तरीका अभी मौजूद नइखे।",
+    },
+    "ORDER_NOT_FOUND": {
+        "en": "Order not found.",
+        "hi": "ऑर्डर नहीं मिला।",
+        "bho": "ऑर्डर ना मिलल।",
+    },
+    "ORDER_CANNOT_CANCEL": {
+        "en": "This order can no longer be cancelled.",
+        "hi": "अब यह ऑर्डर रद्द नहीं हो सकता।",
+        "bho": "अब ई ऑर्डर रद्द ना हो सकेला।",
+    },
     "VALIDATION_ERROR": {
         "en": "Some of the information is not valid.",
         "hi": "कुछ जानकारी सही नहीं है।",
