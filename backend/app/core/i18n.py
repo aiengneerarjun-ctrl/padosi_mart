@@ -190,6 +190,26 @@ MESSAGES: dict[str, dict[str, str]] = {
         "hi": "और पते नहीं जोड़ सकते। पहले कोई पुराना पता हटाएँ।",
         "bho": "अउर पता ना जोड़ सकीं। पहिले कवनो पुरान पता हटाईं।",
     },
+        "CART_STORE_TOO_FAR": {
+        "en": "This shop is too far from the shops in your cart. You will need to place two separate orders, and two delivery charges will apply.",
+        "hi": "यह दुकान आपके कार्ट की दुकानों से बहुत दूर है। आपको दो अलग ऑर्डर करने होंगे और दो बार डिलीवरी चार्ज लगेगा।",
+        "bho": "ई दोकान रउरा कार्ट के दोकानन से बहुत दूर बा। रउरा दू अलग ऑर्डर करे के परी आ दू बेर डिलीवरी चार्ज लागी।",
+    },
+    "CART_STOCK_LOW": {
+        "en": "That much stock is not available.",
+        "hi": "इतना स्टॉक उपलब्ध नहीं है।",
+        "bho": "एतना स्टॉक मौजूद नइखे।",
+    },
+    "CART_FULL": {
+        "en": "Your cart is full. Please remove some items first.",
+        "hi": "आपका कार्ट भर गया है। पहले कुछ आइटम हटाएँ।",
+        "bho": "रउरा कार्ट भर गइल बा। पहिले कुछ आइटम हटाईं।",
+    },
+        "ADDRESS_REQUIRED": {
+        "en": "Please add a delivery address first.",
+        "hi": "पहले डिलीवरी का पता जोड़ें।",
+        "bho": "पहिले डिलीवरी के पता जोड़ीं।",
+    },
     "VALIDATION_ERROR": {
         "en": "Some of the information is not valid.",
         "hi": "कुछ जानकारी सही नहीं है।",
