@@ -415,6 +415,131 @@ MESSAGES: dict[str, dict[str, str]] = {
         "hi": "सुधार अब तक जमा किए गए कैश से ज़्यादा नहीं हो सकता।",
         "bho": "सुधार अबले जमा कइल कैश से जादे ना हो सकेला।",
     },
+        "NOTHING_PICKED_UP": {
+        "en": "Nothing has been picked up yet, so give up the order instead.",
+        "hi": "अभी सामान नहीं उठाया है, ऑर्डर छोड़ दें।",
+        "bho": "अभी सामान नइखे उठल, ऑर्डर छोड़ दीं।",
+    },
+    "GOODS_IN_HAND": {
+        "en": "The partner has the items. Mark the delivery as failed instead.",
+        "hi": "पार्टनर के पास सामान है, डिलीवरी को फेल मार्क करें।",
+        "bho": "पार्टनर लगे सामान बा, डिलीवरी के फेल मार्क करीं।",
+    },
+        "RETURN_NOT_FOUND": {
+        "en": "No returned items found for this order.",
+        "hi": "इस ऑर्डर का वापस आने वाला सामान नहीं मिला।",
+        "bho": "एह ऑर्डर के वापस आवे वाला सामान ना मिलल।",
+    },
+        "CASH_LIMIT_REACHED": {
+        "en": "You are holding the maximum cash allowed. Deposit your cash to get new orders.",
+        "hi": "आपके पास कैश की सीमा तक पैसे हो गए हैं। नए ऑर्डर पाने के लिए पहले कैश जमा करें।",
+        "bho": "रउरा लगे कैश के सीमा तक पइसा हो गइल बा। नया ऑर्डर पावे खातिर पहिले कैश जमा करीं।",
+    },
+        "PAYOUT_EXCEEDS_DUE": {
+        "en": "The partner is not owed that much.",
+        "hi": "पार्टनर का इतना पैसा बाकी नहीं है।",
+        "bho": "पार्टनर के एतना पइसा बाकी नइखे।",
+    },
+    "PAYOUT_CORRECTION_TOO_BIG": {
+        "en": "A correction cannot be more than the amount paid so far.",
+        "hi": "सुधार अब तक दिए गए पैसे से ज़्यादा नहीं हो सकता।",
+        "bho": "सुधार अबले दिहल पइसा से जादे ना हो सकेला।",
+    },
+        "NOTIFICATION_NOT_FOUND": {
+        "en": "Notification not found.",
+        "hi": "नोटिफिकेशन नहीं मिली।",
+        "bho": "नोटिफिकेशन ना मिलल।",
+    },
+    "NOTIF_ORDER_ACCEPTED_TITLE": {
+        "en": "Order accepted",
+        "hi": "ऑर्डर स्वीकार हुआ",
+        "bho": "ऑर्डर मान लिहल गइल",
+    },
+    "NOTIF_ORDER_ACCEPTED_BODY": {
+        "en": "{order_no}: the shop has accepted your order.",
+        "hi": "{order_no}: दुकान ने आपका ऑर्डर मान लिया है।",
+        "bho": "{order_no}: दोकान रउरा ऑर्डर मान लेले बा।",
+    },
+    "NOTIF_ORDER_PARTNER_ASSIGNED_TITLE": {
+        "en": "Delivery partner assigned",
+        "hi": "डिलीवरी पार्टनर मिल गया",
+        "bho": "डिलीवरी पार्टनर मिल गइल",
+    },
+    "NOTIF_ORDER_PARTNER_ASSIGNED_BODY": {
+        "en": "{order_no}: a delivery partner will pick up your order.",
+        "hi": "{order_no}: एक डिलीवरी पार्टनर आपका ऑर्डर लेने जाएगा।",
+        "bho": "{order_no}: एगो डिलीवरी पार्टनर रउरा ऑर्डर लेवे जाई।",
+    },
+    "NOTIF_ORDER_OUT_FOR_DELIVERY_TITLE": {
+        "en": "Order on the way",
+        "hi": "ऑर्डर रास्ते में है",
+        "bho": "ऑर्डर रस्ता में बा",
+    },
+    "NOTIF_ORDER_OUT_FOR_DELIVERY_BODY": {
+        "en": "{order_no} is on its way to you.",
+        "hi": "{order_no} आपके पास आ रहा है।",
+        "bho": "{order_no} रउरा लगे आ रहल बा।",
+    },
+    "NOTIF_ORDER_DELIVERED_TITLE": {
+        "en": "Order delivered",
+        "hi": "ऑर्डर पहुँच गया",
+        "bho": "ऑर्डर पहुँच गइल",
+    },
+    "NOTIF_ORDER_DELIVERED_BODY": {
+        "en": "{order_no} has been delivered. Thank you!",
+        "hi": "{order_no} पहुँचा दिया गया है। धन्यवाद!",
+        "bho": "{order_no} पहुँचा दिहल गइल। धन्यवाद!",
+    },
+    "NOTIF_ORDER_CANCELLED_TITLE": {
+        "en": "Order cancelled",
+        "hi": "ऑर्डर रद्द हुआ",
+        "bho": "ऑर्डर रद्द हो गइल",
+    },
+    "NOTIF_ORDER_CANCELLED_BODY": {
+        "en": "{order_no} has been cancelled.",
+        "hi": "{order_no} रद्द कर दिया गया है।",
+        "bho": "{order_no} रद्द हो गइल बा।",
+    },
+    "NOTIF_ORDER_FAILED_DELIVERY_TITLE": {
+        "en": "Delivery failed",
+        "hi": "डिलीवरी नहीं हो पाई",
+        "bho": "डिलीवरी ना हो पाइल",
+    },
+    "NOTIF_ORDER_FAILED_DELIVERY_BODY": {
+        "en": "We could not deliver {order_no}.",
+        "hi": "हम {order_no} की डिलीवरी नहीं कर पाए।",
+        "bho": "हम {order_no} के डिलीवरी ना क पाइनी।",
+    },
+    "NOTIF_ORDER_ITEMS_REMOVED_TITLE": {
+        "en": "Items removed from your order",
+        "hi": "आपके ऑर्डर से सामान हटा",
+        "bho": "रउरा ऑर्डर से सामान हटल",
+    },
+    "NOTIF_ORDER_ITEMS_REMOVED_BODY": {
+        "en": "{store_name} could not give {count} item(s) of {order_no}. Check your new total; you can cancel within {minutes} minutes.",
+        "hi": "{store_name} {order_no} के {count} सामान नहीं दे पाई। नया टोटल देखें; आप {minutes} मिनट में ऑर्डर रद्द कर सकते हैं।",
+        "bho": "{store_name} {order_no} के {count} सामान ना दे पाइल। नया टोटल देखीं; रउरा {minutes} मिनट में ऑर्डर रद्द क सकेनी।",
+    },
+    "NOTIF_SELLER_NEW_ORDER_TITLE": {
+        "en": "New order",
+        "hi": "नया ऑर्डर",
+        "bho": "नया ऑर्डर",
+    },
+    "NOTIF_SELLER_NEW_ORDER_BODY": {
+        "en": "{order_no} for {store_name}. Open the app to accept it.",
+        "hi": "{store_name} के लिए {order_no}। स्वीकार करने के लिए ऐप खोलें।",
+        "bho": "{store_name} खातिर {order_no}। मान लेवे खातिर ऐप खोलीं।",
+    },
+    "NOTIF_PAYOUT_RECEIVED_TITLE": {
+        "en": "Payment received",
+        "hi": "भुगतान मिला",
+        "bho": "भुगतान मिलल",
+    },
+    "NOTIF_PAYOUT_RECEIVED_BODY": {
+        "en": "Admin paid you ₹{amount} for your deliveries.",
+        "hi": "आपकी डिलीवरी की कमाई के ₹{amount} आपको दिए गए।",
+        "bho": "रउरा डिलीवरी के कमाई के ₹{amount} दिहल गइल।",
+    },
     "VALIDATION_ERROR": {
         "en": "Some of the information is not valid.",
         "hi": "कुछ जानकारी सही नहीं है।",

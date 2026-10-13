@@ -27,11 +27,13 @@ from app.models.delivery import DeliveryStatus, PartnerStatus
 from app.models.order import StoreOrderStatus
 from app.schemas.delivery_assignment import AvailableOrderOut, MyDeliveryOut, PickupItemOut, PickupStoreOut
 from app.services.cart import km_between
+from app.services.delivery_cash import _totals
 from app.services.delivery_rules import (
     ACTIVE_DELIVERY_STATUSES,
     MAX_CANDIDATES,
     NEARBY_RADIUS_KM,
     OPEN_ORDER_STATUSES,
+    cash_limit_reached,
     cod_amount_due,
     order_status_when_assigned,
     order_status_when_released,
@@ -135,6 +137,11 @@ async def _load_order(db: AsyncSession, order_id: uuid.UUID, *, lock: bool) -> O
     if lock:
         q = q.with_for_update()
     return await db.scalar(q)
+async def _require_under_cash_limit(db: AsyncSession, partner: DeliveryPartner) -> None:
+    """Admin ki lagayi cash limit: partner ke paas utna COD cash ho gaya to jama karne tak naya order nahi."""
+    collected, deposited = await _totals(db, partner.id)
+    if cash_limit_reached(collected - deposited, partner.cash_limit):
+        raise api_error(409, "CASH_LIMIT_REACHED", "Aapke paas cash limit tak pahunch gaya hai. Pehle cash jama karo.")
 
 
 # ---------------- actions ----------------
@@ -144,7 +151,9 @@ async def list_available(
     db: AsyncSession, user: User, lat: float, lng: float, limit: int, offset: int, lang: str
 ) -> list[AvailableOrderOut]:
     """Partner ke area ke saare open orders (customer ke order karte hi se), paas wale pehle."""
-    _require_working(await _partner_for(db, user, lock=False))
+    partner = await _partner_for(db, user, lock=False)
+    _require_working(partner)
+    await _require_under_cash_limit(db, partner)
     # Pehle database me chhota dabba (bounding box) se chhaanto, phir sahi doori python me
     dlat = NEARBY_RADIUS_KM / 111.0
     dlng = NEARBY_RADIUS_KM / (111.0 * max(0.1, math.cos(math.radians(lat))))
@@ -176,6 +185,7 @@ async def accept(db: AsyncSession, user: User, order_id: uuid.UUID, lat: float, 
         return _my_delivery(mine, order, lang)
     if await _my_live_delivery(db, partner.id) is not None:
         raise api_error(409, "PARTNER_BUSY", "Pehle apna chal raha order poora karo.")
+    await _require_under_cash_limit(db, partner)
 
     order = await _load_order(db, order_id, lock=True)  # seller / customer cancel ke saath line me
     if order is None:

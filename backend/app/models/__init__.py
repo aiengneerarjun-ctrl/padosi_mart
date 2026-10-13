@@ -6,4 +6,5 @@ from app.models.catalog import Brand, Category, Inventory, InventoryTransaction,
 from app.models.customer import CustomerAddress, FavouriteProduct, FavouriteStore  # noqa
 from app.models.cart import Cart, CartItem  # noqa
 from app.models.order import Order, OrderItem, OrderItemRemoval, OrderStatusHistory, StoreOrder  # noqa
-from app.models.delivery import CodDeposit, Delivery, DeliveryPartner  # noqa
+from app.models.delivery import CodDeposit, Delivery, DeliveryPartner, DeliveryPaySettings, PartnerPayout, StoreOrderReturn  # noqa
+from app.models.notification import Notification  # noqa

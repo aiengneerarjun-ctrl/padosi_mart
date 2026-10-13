@@ -10,7 +10,8 @@
 Lock ka kram wahi: pehle partner row, phir Order row.
 """
 import uuid
-from datetime import timedelta
+
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException
@@ -19,10 +20,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.errors import api_error
-from app.models import Delivery, Order, User
+from app.models import Delivery, Order, StoreOrderReturn, User
 from app.models.delivery import DeliveryStatus, PartnerStatus
 from app.models.order import OrderStatus, PaymentStatus, StoreOrderStatus
+from app.schemas.delivery_admin import FailedOut
 from app.schemas.delivery_assignment import DeliveredOut, MyDeliveryOut
+from app.services.delivery_earnings import earning_for
 from app.services.delivery_assignment import (
     INACTIVE_STORE,
     _history,
@@ -37,6 +40,8 @@ from app.services.delivery_rules import (
     all_stores_picked_up,
     can_pickup_store,
     cod_amount_due,
+    fail_text,
+    goods_in_hand,
     otp_matches,
 )
 
@@ -145,9 +150,11 @@ async def complete_delivery(db: AsyncSession, user: User, order_id: uuid.UUID, o
             raise _otp_locked(OTP_LOCK_SECONDS)
         raise api_error(422, "OTP_INVALID", "OTP galat hai.")
 
+    earning = await earning_for(db, order)  # abhi ka rate is delivery par fix ho jaata hai (status badalne se pehle padho)
     owed = cod_amount_due(order.payment_method, order.payment_status, order.status, order.total)
     delivery.status = DeliveryStatus.DELIVERED
     delivery.delivered_at = now
+    delivery.earning = earning
     delivery.cod_collected = order.total if owed > 0 else Decimal("0.00")
     delivery.otp_attempts = 0
     delivery.otp_locked_until = None
@@ -158,3 +165,45 @@ async def complete_delivery(db: AsyncSession, user: User, order_id: uuid.UUID, o
     order.status = OrderStatus.DELIVERED
     await db.commit()
     return _delivered_out(delivery, order)
+
+
+def mark_failed(db: AsyncSession, delivery: Delivery, order: Order, *, actor: User, role: str, code: str, note: str | None) -> str:
+    """Delivery fail: Delivery FAILED, Order FAILED_DELIVERY, COD ka paisa ab nahi lena (payment_status NOT_REQUIRED).
+    Partner free ho jaata hai. Har (zinda) dukaan-hisse ke liye 'saaman wapas' ki ek PENDING row banti hai;
+    dukaan ya admin confirm kare tab stock wapas judta hai (services/delivery_return.py)."""
+    text = fail_text(code, note)
+    delivery.status = DeliveryStatus.FAILED
+    delivery.failed_at = datetime.now(timezone.utc)
+    delivery.fail_reason = text
+    if order.payment_method == "COD" and order.payment_status == PaymentStatus.PENDING:
+        order.payment_status = PaymentStatus.NOT_REQUIRED
+    for so in order.store_orders:  # saaman dukaan ko wapas milna baaki hai
+        if so.status not in INACTIVE_STORE:
+            db.add(StoreOrderReturn(order_id=order.id, store_order_id=so.id, delivery_id=delivery.id, was_picked_up=so.status == StoreOrderStatus.PICKED_UP))
+    db.add(_history(order.id, OrderStatus.FAILED_DELIVERY, from_status=order.status, actor=actor, role=role, note=text[:290]))
+    order.status = OrderStatus.FAILED_DELIVERY
+    return text
+
+
+async def fail_delivery(db: AsyncSession, user: User, order_id: uuid.UUID, code: str, note: str | None) -> FailedOut:
+    """Partner ke paas saaman hai par delivery nahi ho paayi (customer nahi mila, galat pata, ...)."""
+    partner = await _partner_for(db, user, lock=True)
+    _require_active(partner)
+    done = await db.scalar(  # retry: wahi jawab
+        select(Delivery).where(
+            Delivery.partner_id == partner.id, Delivery.order_id == order_id, Delivery.status == DeliveryStatus.FAILED
+        ).execution_options(populate_existing=True)
+    )
+    if done is not None:
+        order = await _load_order(db, order_id, lock=False)
+        return FailedOut(order_id=order.id, order_number=order.order_number, status=order.status)
+
+    delivery = await _my_live_delivery(db, partner.id, order_id)
+    if delivery is None:
+        raise api_error(404, "DELIVERY_NOT_FOUND", "Aapke paas ye delivery nahi hai (ya pickup ho chuka hai).")
+    order: Order = await _load_order(db, order_id, lock=True)
+    if not goods_in_hand(delivery.status, [s.status for s in order.store_orders]):
+        raise api_error(409, "NOTHING_PICKED_UP", "Abhi saaman nahi uthaya hai, order chhod do (release).")
+    mark_failed(db, delivery, order, actor=user, role="DELIVERY_PARTNER", code=code, note=note)
+    await db.commit()
+    return FailedOut(order_id=order.id, order_number=order.order_number, status=order.status)

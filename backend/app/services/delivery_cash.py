@@ -5,6 +5,8 @@
 - Partner ke paas cash = kul collected - kul jama. Jama kiya hua kabhi collected se zyada nahi ho sakta.
 - Galti hui to naya negative entry (sudhaar) + note; purani row nahi chhedte.
 - Partner suspended ho tab bhi cash jama ho sakta hai.
+- Cash limit: har partner ki apni limit (default 3000), sirf admin badalta hai. Limit tak cash ho to naya order nahi milta
+  (ye rok delivery_assignment me hai).
 Lock: partner row (jo deliver karte waqt bhi lock hoti hai), taaki hisaab aur delivery ek saath na bigaden.
 """
 import uuid
@@ -19,7 +21,7 @@ from app.models import CodDeposit, Delivery, DeliveryPartner, Order, User
 from app.models.delivery import DeliveryStatus
 from app.schemas.delivery_cash import AdminCashRowOut, CashCollectionOut, CashDepositOut, CashSummaryOut
 from app.services.audit import write_audit
-from app.services.delivery_rules import deposit_problem
+from app.services.delivery_rules import cash_limit_reached, deposit_problem
 
 ZERO = Decimal("0.00")
 RECENT = 20
@@ -37,9 +39,10 @@ async def _totals(db: AsyncSession, partner_id: uuid.UUID) -> tuple[Decimal, Dec
 
 async def summary(db: AsyncSession, partner_id: uuid.UUID) -> CashSummaryOut:
     collected, deposited = await _totals(db, partner_id)
+    limit = await db.scalar(select(DeliveryPartner.cash_limit).where(DeliveryPartner.id == partner_id))
     rows = (
         await db.execute(
-            select(Delivery.order_id, Order.order_number, Delivery.cod_collected, Delivery.delivered_at)
+            select(Delivery.order_id, Order.order_no, Delivery.cod_collected, Delivery.delivered_at)
             .join(Order, Order.id == Delivery.order_id)
             .where(Delivery.partner_id == partner_id, Delivery.status == DeliveryStatus.DELIVERED, Delivery.cod_collected > 0)
             .order_by(Delivery.delivered_at.desc())
@@ -53,8 +56,9 @@ async def summary(db: AsyncSession, partner_id: uuid.UUID) -> CashSummaryOut:
     ).all()
     return CashSummaryOut(
         cash_collected=float(collected), cash_deposited=float(deposited), cash_in_hand=float(collected - deposited),
+        cash_limit=float(limit), limit_reached=cash_limit_reached(collected - deposited, limit),
         recent_collections=[
-            CashCollectionOut(order_id=r.order_id, order_number=r.order_number, amount=float(r.cod_collected), delivered_at=r.delivered_at)
+            CashCollectionOut(order_id=r.order_id, order_number=f"PD{r.order_no}", amount=float(r.cod_collected), delivered_at=r.delivered_at)
             for r in rows
         ],
         recent_deposits=[CashDepositOut(id=d.id, amount=float(d.amount), note=d.note, created_at=d.created_at) for d in deposits],
@@ -93,6 +97,7 @@ async def admin_list(db: AsyncSession, include_settled: bool, limit: int, offset
         AdminCashRowOut(
             partner_id=p.id, full_name=p.full_name, phone=phone, status=p.status,
             cash_collected=float(c), cash_deposited=float(d), cash_in_hand=float(Decimal(str(c)) - Decimal(str(d))),
+            cash_limit=float(p.cash_limit), limit_reached=cash_limit_reached(Decimal(str(c)) - Decimal(str(d)), p.cash_limit),
         )
         for p, phone, c, d in (await db.execute(q)).all()
     ]
@@ -123,6 +128,25 @@ async def record_deposit(
         db, actor=admin, action="delivery_cash.deposit", target_type="delivery_partner", target_id=partner_id,
         old={"cash_in_hand": str(collected - deposited)}, new={"cash_in_hand": str(collected - deposited - amount), "amount": str(amount)},
         reason=note, request=request,
+    )
+    await db.commit()
+    return await summary(db, partner_id)
+
+
+async def set_limit(
+    db: AsyncSession, admin: User, request: Request, partner_id: uuid.UUID, cash_limit: Decimal, reason: str
+) -> CashSummaryOut:
+    """Admin kisi bhi partner ki COD cash limit badalta hai (partner ID ke hisaab se). Audit log banta hai."""
+    partner = await db.scalar(
+        select(DeliveryPartner).where(DeliveryPartner.id == partner_id).with_for_update().execution_options(populate_existing=True)
+    )
+    if partner is None:
+        raise api_error(404, "PARTNER_NOT_FOUND", "Delivery partner nahi mila.")
+    old = partner.cash_limit
+    partner.cash_limit = cash_limit
+    write_audit(
+        db, actor=admin, action="delivery_cash.set_limit", target_type="delivery_partner", target_id=partner_id,
+        old={"cash_limit": str(old)}, new={"cash_limit": str(cash_limit)}, reason=reason, request=request,
     )
     await db.commit()
     return await summary(db, partner_id)

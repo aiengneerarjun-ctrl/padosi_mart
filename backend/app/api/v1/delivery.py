@@ -10,10 +10,12 @@ from app.core.errors import api_error
 from app.models import User
 from app.models.delivery import KycIdType, VehicleType
 from app.schemas.delivery import DeliveryPartnerOut, partner_out
+from app.schemas.delivery_admin import FailBody, FailedOut
 from app.schemas.delivery_cash import CashSummaryOut
+from app.schemas.delivery_earnings import EarningsSummaryOut
 from app.schemas.delivery_assignment import AvailableOrderOut, DeliveredOut, DeliverBody, MyDeliveryOut, ReleasedOut
 from app.services import delivery_partner as service
-from app.services import delivery_assignment, delivery_cash, delivery_progress
+from app.services import delivery_assignment, delivery_cash, delivery_earnings, delivery_progress
 from app.services.image_processing import MAX_UPLOAD_BYTES
 
 # Delivery partner khud ke liye. (Order milna / accept karna agle step me aayega.)
@@ -138,3 +140,16 @@ async def deliver_order(order_id: uuid.UUID, body: DeliverBody, user: User = Dep
 async def my_cash(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Mere paas COD ka kitna cash hai (jo customers se liya - jo admin ko jama kiya), aur haal ka hisaab."""
     return await delivery_cash.my_summary(db, user)
+
+
+@router.post("/orders/{order_id}/fail", response_model=FailedOut)
+async def fail_order(order_id: uuid.UUID, body: FailBody, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Saaman uth chuka hai par delivery nahi ho paayi (customer nahi mila / galat pata / ...). Order FAILED_DELIVERY, aap free.
+    Saaman nahi uthaya to ye nahi, release use karo (409 NOTHING_PICKED_UP)."""
+    return await delivery_progress.fail_delivery(db, user, order_id, body.reason_code, body.note)
+
+
+@router.get("/me/earnings", response_model=EarningsSummaryOut)
+async def my_earnings(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Meri kamai: kul kamai, admin se mila hua paisa, abhi baaki kitna, aur haal ki deliveries / payouts."""
+    return await delivery_earnings.my_summary(db, user)

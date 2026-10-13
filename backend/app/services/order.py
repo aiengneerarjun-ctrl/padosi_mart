@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.errors import api_error
 from app.core.i18n import localized, translate, translate_fmt
-from app.models import Delivery, Order, OrderItem, OrderStatusHistory, Product, Store, StoreOrder, User
+from app.models import Delivery, Order, OrderItem, OrderStatusHistory, Product, Seller, Store, StoreOrder, User
 from app.models.cart import Cart, CartItem
 from app.models.catalog import StockReason
 from app.models.order import OrderStatus, PaymentMethod, PaymentStatus, StoreOrderStatus
@@ -25,6 +25,7 @@ from app.schemas.order import (
 )
 from app.services import checkout as checkout_service
 from app.services import customer as customer_service
+from app.services import notification
 from app.services.delivery_assignment import cancel_live_delivery
 from app.services.delivery_rules import delivery_otp
 from app.services.inventory import adjust_stock
@@ -134,6 +135,10 @@ async def place_order(db: AsyncSession, user: User, body: OrderCreate, idempoten
     if order.payment_method == PaymentMethod.COD:
         order.status = OrderStatus.CONFIRMED
         db.add(_history(order.id, OrderStatus.CONFIRMED, None, "SYSTEM", from_status=OrderStatus.PLACED, note="COD"))
+        # NAYA: har dukaan ke seller ko "naya order" (usi transaction me)
+        seller_user = dict((await db.execute(select(Seller.id, Seller.user_id).where(Seller.id.in_({s.seller_id for s in stores.values()})))).all())
+        for store in stores.values():
+            notification.add(db, seller_user[store.seller_id], "SELLER_NEW_ORDER", {"order_no": f"PD{order.order_no}", "store_name": store.name}, order.id)
 
     # Cart khali
     cart_id = await db.scalar(select(Cart.id).where(Cart.user_id == user.id))
@@ -142,7 +147,6 @@ async def place_order(db: AsyncSession, user: User, body: OrderCreate, idempoten
 
     await db.commit()
     return await _order_out(db, order, lang), True
-
 
 # ---------------- Read ----------------
 

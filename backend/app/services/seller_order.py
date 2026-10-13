@@ -28,6 +28,7 @@ from app.models.catalog import StockReason
 from app.models.order import OrderItemRemoval, OrderStatus, PaymentStatus, RemovalReason, StoreOrderStatus
 from app.models.seller import SellerStatus
 from app.schemas.seller_order import SellerOrderItem, SellerOrderOut, UnavailableItem
+from app.services import notification
 from app.services.checkout import delivery_fee_for
 from app.services.delivery_assignment import cancel_live_delivery
 from app.services.inventory import adjust_stock
@@ -233,7 +234,11 @@ async def _remove_items(
         order.total = order.items_subtotal + order.delivery_fee
         fee_note = f", delivery {old_fee} -> {order.delivery_fee}" if order.delivery_fee != old_fee else ""
         db.add(_history(order.id, order.status, from_status=order.status, actor=None, role="SYSTEM", note=f"{so.store_name}: total {old_total} -> {order.total}{fee_note}"))
-        _apply_rollup(db, order)
+        await _apply_rollup(db, order)
+        notification.add(  # customer ko: kya hata, naya total dekho, cancel kar sakte ho
+            db, order.user_id, "ORDER_ITEMS_REMOVED",
+            {"order_no": order.order_number, "store_name": so.store_name, "count": len(new), "minutes": ACCEPT_WAIT_SECONDS // 60}, order.id,
+        )
     return len(new)
 
 def _clean_picks(items: list[UnavailableItem], valid_ids: set[uuid.UUID]) -> dict[uuid.UUID, tuple[str, str | None]]:

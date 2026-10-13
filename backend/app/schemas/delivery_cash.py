@@ -23,6 +23,8 @@ class CashSummaryOut(BaseModel):
     cash_collected: float  # COD me customers se liya hua kul cash
     cash_deposited: float  # admin ko jama kiya hua kul cash (sudhaar ke baad)
     cash_in_hand: float  # abhi partner ke paas = collected - deposited
+    cash_limit: float  # admin ne is partner ke liye jo limit lagayi hai (default 3000)
+    limit_reached: bool  # True = cash_in_hand limit tak pahunch gaya, naya order nahi milega
     recent_collections: list[CashCollectionOut]
     recent_deposits: list[CashDepositOut]
 
@@ -35,6 +37,8 @@ class AdminCashRowOut(BaseModel):
     cash_collected: float
     cash_deposited: float
     cash_in_hand: float
+    cash_limit: float
+    limit_reached: bool
 
 
 class DepositBody(BaseModel):
@@ -51,3 +55,10 @@ class DepositBody(BaseModel):
         if self.amount < 0 and self.note is None:
             raise ValueError("sudhaar ke liye note likhna zaroori hai")
         return self
+
+
+class LimitBody(BaseModel):
+    """Admin partner ki COD cash limit badalta hai. Karan likhna zaroori (audit log me jaata hai)."""
+
+    cash_limit: Decimal = Field(gt=0, le=100000, max_digits=10, decimal_places=2)
+    reason: str = Field(min_length=3, max_length=300)

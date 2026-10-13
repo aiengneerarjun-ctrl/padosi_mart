@@ -107,3 +107,52 @@ def deposit_problem(collected: Decimal, deposited: Decimal, amount: Decimal) -> 
     if collected - (deposited + amount) < 0:
         return "EXCEEDS"  # partner ke paas jitna cash hai usse zyada jama dikha diya
     return None
+
+
+# ---------------- delivery fail / admin tools ----------------
+FAIL_REASONS = ("CUSTOMER_UNREACHABLE", "CUSTOMER_REFUSED", "WRONG_ADDRESS", "PARTNER_ISSUE", "OTHER")
+
+
+def goods_in_hand(delivery_status: str, store_statuses: list[str]) -> bool:
+    """Partner ke paas customer ka saaman hai? (kisi dukaan se uth chuka). Tab order "chhoda" nahi jaa sakta, sirf fail ho sakta hai."""
+    if delivery_status in ("PICKED_UP", "OUT_FOR_DELIVERY"):
+        return True
+    return delivery_status == "ASSIGNED" and any(s == "PICKED_UP" for s in store_statuses)
+
+
+def fail_text(code: str, note: str | None) -> str:
+    """Itihaas / delivery me likhne ka ek line ka karan."""
+    return f"{code}: {note}" if note else code
+# ---------------- fail hui delivery ka saaman dukaan ko wapas ----------------
+RETURN_STATUSES = ("PENDING", "RECEIVED")
+RESTOCK_STORE_TYPES = ("KIRANA",)  # restaurant ka bana hua khana dobara nahi bikta, isliye uska stock wapas nahi judta
+
+
+def should_restock(store_type: str, seller_says_ok: bool) -> bool:
+    """Stock tabhi wapas judta hai jab dukaan kirana ho (restaurant nahi) aur dukaan ne kaha ho ki saaman theek hai."""
+    return seller_says_ok and store_type in RESTOCK_STORE_TYPES
+
+
+def stock_to_return(items: list[tuple], removed_item_ids: set) -> dict:
+    """items = [(item_id, product_id, quantity)]. Jo item seller pehle hi hata chuka hai uska stock tab hi wapas aa gaya tha,
+    isliye use dobara nahi jodte. Jawab: {product_id: kul quantity}."""
+    out: dict = {}
+    for item_id, product_id, qty in items:
+        if item_id in removed_item_ids:
+            continue
+        out[product_id] = out.get(product_id, 0) + qty
+    return out
+# ---------------- COD cash limit ----------------
+DEFAULT_CASH_LIMIT = Decimal("3000.00")  # naye partner ki limit (database default bhi yahi). Admin har partner ki alag kar sakta hai.
+
+
+def cash_limit_reached(cash_in_hand, limit) -> bool:
+    """Partner ke paas cash limit tak (ya usse zyada) pahunch gaya ho to naya order nahi milega, jab tak wo cash jama na kare."""
+    return Decimal(str(cash_in_hand)) >= Decimal(str(limit))
+
+
+
+# ---------------- partner ki kamai ----------------
+def pick_rate(delivery_fee, normal_rate: Decimal, free_delivery_rate: Decimal) -> Decimal:
+    """Customer ka delivery fee 0 tha (free-delivery order) to free_delivery_rate, warna normal_rate. Dono admin tay karta hai."""
+    return free_delivery_rate if Decimal(str(delivery_fee)) == 0 else normal_rate

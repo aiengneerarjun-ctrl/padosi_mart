@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import require_super_admin
 from app.core.database import get_db
 from app.models import User
-from app.schemas.delivery_cash import AdminCashRowOut, CashSummaryOut, DepositBody
+from app.schemas.delivery_cash import AdminCashRowOut, CashSummaryOut, DepositBody, LimitBody
 from app.services import delivery_cash as service
 
 # Is router ke SAARE routes sirf Super Admin ke liye (router level par).
@@ -37,3 +37,12 @@ async def record_deposit(
 ):
     """Partner ne cash jama kiya (amount > 0). Galti sudhaar: amount < 0 + note. Jama kiya hua cash partner ke paas ke cash se zyada nahi ho sakta."""
     return await service.record_deposit(db, admin, request, partner_id, body.amount, body.note)
+
+
+@router.patch("/{partner_id}/limit", response_model=CashSummaryOut)
+async def set_limit(
+    partner_id: uuid.UUID, body: LimitBody, request: Request,
+    admin: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db),
+):
+    """Is partner ki COD cash limit badlo (default 3000). Limit tak cash ho jaye to partner ko naya order tab tak nahi milta jab tak wo cash jama na kare."""
+    return await service.set_limit(db, admin, request, partner_id, body.cash_limit, body.reason)
