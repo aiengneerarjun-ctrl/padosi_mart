@@ -9,22 +9,26 @@ Rules:
 """
 import uuid
 from decimal import Decimal
+from datetime import timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from app.core.config import settings
 from app.core.errors import api_error
-from app.core.i18n import localized
-from app.models import Order, OrderItem, OrderStatusHistory, Product, Store, StoreOrder, User
+from app.core.i18n import localized, translate, translate_fmt
+from app.models import Delivery, Order, OrderItem, OrderStatusHistory, Product, Store, StoreOrder, User
 from app.models.cart import Cart, CartItem
 from app.models.catalog import StockReason
 from app.models.order import OrderStatus, PaymentMethod, PaymentStatus, StoreOrderStatus
 from app.schemas.order import (
-    AddressSnapshotOut, OrderCreate, OrderItemOut, OrderOut, OrderSummary, StatusHistoryOut, StoreOrderOut,
+    AddressSnapshotOut, OrderCreate, OrderItemOut, OrderOut, OrderSummary, RemovedItemOut, StatusHistoryOut, StoreOrderOut,
 )
 from app.services import checkout as checkout_service
 from app.services import customer as customer_service
+from app.services.delivery_assignment import cancel_live_delivery
+from app.services.delivery_rules import delivery_otp
 from app.services.inventory import adjust_stock
+from app.services.seller_order import ACCEPT_WAIT_SECONDS
 
 CENT = Decimal("0.01")
 CANCELLABLE_ORDER_STATUSES = (OrderStatus.PLACED, OrderStatus.CONFIRMED)
@@ -33,7 +37,10 @@ CANCELLABLE_ORDER_STATUSES = (OrderStatus.PLACED, OrderStatus.CONFIRMED)
 async def _lock_user(db: AsyncSession, user: User) -> None:
     # Ek customer ke do request ek saath aayein to line se chalein (double order / double cancel na ho)
     await db.execute(select(User.id).where(User.id == user.id).with_for_update())
-
+def _can_cancel(order: Order) -> bool:
+    """Customer tab tak cancel kar sakta hai jab tak koi bhi (reject na hui) dukaan accept na kar le."""
+    live = [so for so in order.store_orders if so.status != StoreOrderStatus.REJECTED]
+    return order.status in CANCELLABLE_ORDER_STATUSES and all(so.status == StoreOrderStatus.PLACED for so in live)
 
 def _history(order_id, to_status, actor: User | None, role, *, store_order_id=None, from_status=None, note=None):
     return OrderStatusHistory(
@@ -87,6 +94,7 @@ async def place_order(db: AsyncSession, user: User, body: OrderCreate, idempoten
         receiver_name=address.receiver_name, receiver_phone=address.receiver_phone, address_line=address.address_line,
         landmark=address.landmark, latitude=address.latitude, longitude=address.longitude,
         items_subtotal=items_subtotal, delivery_fee=fee, total=total, note=(body.note or "").strip() or None,
+        original_items_subtotal=items_subtotal, original_total=total,
     )
     db.add(order)
     await db.flush()
@@ -139,28 +147,71 @@ async def place_order(db: AsyncSession, user: User, body: OrderCreate, idempoten
 # ---------------- Read ----------------
 
 
+def _removal_label(code: str, lang: str) -> str:
+    return translate(f"REMOVAL_REASON_{code}", lang)
+
+
 async def _order_out(db: AsyncSession, order: Order, lang: str) -> OrderOut:
-    # Taaza data DB se dobara (naye bane store_orders/items bhi saath aayein)
+    # Taaza data DB se dobara (naye bane store_orders/items/removals bhi saath aayein)
     order = await db.scalar(select(Order).where(Order.id == order.id).execution_options(populate_existing=True))
     history = (
         await db.scalars(
             select(OrderStatusHistory).where(OrderStatusHistory.order_id == order.id).order_by(OrderStatusHistory.seq)
         )
     ).all()
+    removal_of = {r.order_item_id: r for r in order.removals}
+
+    def item_out(i: OrderItem) -> OrderItemOut:
+        r = removal_of.get(i.id)
+        return OrderItemOut(
+            product_id=i.product_id, name=localized(i, lang), selling_unit=i.selling_unit, mrp=float(i.mrp),
+            unit_price=float(i.unit_price), quantity=i.quantity, line_total=float(i.line_total),
+            removed=r is not None, removed_reason_code=r.reason_code if r else None,
+            removed_reason=_removal_label(r.reason_code, lang) if r else None, removed_note=r.note if r else None,
+        )
+
     stores = [
         StoreOrderOut(
             id=so.id, store_id=so.store_id, store_name=so.store_name, store_address=so.store_address, status=so.status,
-            items_subtotal=float(so.items_subtotal),
-            items=[
-                OrderItemOut(
-                    product_id=i.product_id, name=localized(i, lang), selling_unit=i.selling_unit, mrp=float(i.mrp),
-                    unit_price=float(i.unit_price), quantity=i.quantity, line_total=float(i.line_total),
-                )
-                for i in so.items
-            ],
+            items_subtotal=float(so.items_subtotal), items=[item_out(i) for i in so.items],
         )
         for so in order.store_orders
     ]
+    removed_items = [
+        RemovedItemOut(
+            product_id=i.product_id, name=localized(i, lang), selling_unit=i.selling_unit, quantity=i.quantity,
+            line_total=float(i.line_total), store_name=so.store_name, reason_code=removal_of[i.id].reason_code,
+            reason=_removal_label(removal_of[i.id].reason_code, lang), note=removal_of[i.id].note,
+        )
+        for so in order.store_orders for i in so.items if i.id in removal_of
+    ]
+    removed_total = sum((r.line_total for r in order.removals), Decimal("0"))
+    all_removed = bool(removal_of) and all(i.id in removal_of for so in order.store_orders for i in so.items)
+    can_cancel = _can_cancel(order)
+    fee_added = max(Decimal("0"), order.delivery_fee - (order.original_total - order.original_items_subtotal))
+    notice = None
+    if all_removed:
+        notice = translate("ORDER_NOTICE_ALL_REMOVED", lang)
+    elif removal_of and order.status != OrderStatus.CANCELLED:  # customer ne khud cancel kiya ho to ye sandesh nahi
+        if fee_added > 0:
+            notice = translate_fmt(
+                "ORDER_NOTICE_ITEMS_REMOVED_FEE", lang, count=len(removal_of), total=f"{order.total:.2f}",
+                fee=f"{fee_added:.2f}", free_from=f"{checkout_service.FREE_DELIVERY_FROM:.0f}",
+            )
+        else:
+            notice = translate_fmt("ORDER_NOTICE_ITEMS_REMOVED", lang, count=len(removal_of), total=f"{order.total:.2f}")
+        if can_cancel:  # customer ko saaf batao ki wo cancel kar sakta hai
+            notice += " " + translate("ORDER_NOTICE_CAN_CANCEL", lang)
+    waits = [
+        max(r.created_at for r in order.removals if r.store_order_id == so.id) + timedelta(seconds=ACCEPT_WAIT_SECONDS)
+        for so in order.store_orders if so.status == StoreOrderStatus.PLACED and any(r.store_order_id == so.id for r in order.removals)
+    ]
+    owes = order.payment_status == PaymentStatus.PENDING and order.status != OrderStatus.CANCELLED
+    otp = None
+    if order.status == OrderStatus.OUT_FOR_DELIVERY:  # delivery partner ko batane ke liye, sirf raaste me dikhta hai
+        live = await db.scalar(select(Delivery).where(Delivery.order_id == order.id, Delivery.status == "OUT_FOR_DELIVERY"))
+        if live is not None:
+            otp = delivery_otp(settings.jwt_secret, live.id)
     return OrderOut(
         id=order.id, order_number=order.order_number, status=order.status, payment_method=order.payment_method,
         payment_status=order.payment_status,
@@ -169,6 +220,10 @@ async def _order_out(db: AsyncSession, order: Order, lang: str) -> OrderOut:
             landmark=order.landmark, latitude=float(order.latitude), longitude=float(order.longitude),
         ),
         items_subtotal=float(order.items_subtotal), delivery_fee=float(order.delivery_fee), total=float(order.total),
+        original_items_subtotal=float(order.original_items_subtotal), original_total=float(order.original_total),
+        removed_total=float(removed_total), delivery_fee_added=float(fee_added), can_cancel=can_cancel,
+        seller_can_accept_after=max(waits) if waits else None, amount_due=float(order.total) if owes else 0.0,
+       delivery_otp=otp, removed_items=removed_items, notice=notice,
         note=order.note, created_at=order.created_at, stores=stores,
         history=[
             StatusHistoryOut(
@@ -202,11 +257,14 @@ async def list_orders(db: AsyncSession, user: User, limit: int, offset: int) -> 
     ).all()
     out = []
     for o in orders:
+        removed_ids = {r.order_item_id for r in o.removals}
         out.append(
             OrderSummary(
                 id=o.id, order_number=o.order_number, status=o.status, payment_method=o.payment_method,
-                payment_status=o.payment_status, total=float(o.total), store_names=[so.store_name for so in o.store_orders],
-                item_count=sum(i.quantity for so in o.store_orders for i in so.items), created_at=o.created_at,
+                payment_status=o.payment_status, total=float(o.total), has_removed_items=bool(removed_ids),
+                store_names=[so.store_name for so in o.store_orders],
+                item_count=sum(i.quantity for so in o.store_orders for i in so.items if i.id not in removed_ids),
+                created_at=o.created_at,
             )
         )
     return out
@@ -222,17 +280,21 @@ async def cancel_order(db: AsyncSession, user: User, order_id: uuid.UUID, reason
     if order.status == OrderStatus.CANCELLED:  # dobara cancel: error nahi, wahi haal
         return await _order_out(db, order, lang)
 
-    if order.status not in CANCELLABLE_ORDER_STATUSES or any(so.status != StoreOrderStatus.PLACED for so in order.store_orders):
+    # Seller ne jo hissa reject kiya ya jo item hataya, uska stock pehle hi wapas aa chuka hai: use dobara na chhedo
+        removed_ids = {r.order_item_id for r in order.removals}
+    live = [so for so in order.store_orders if so.status != StoreOrderStatus.REJECTED]
+    if not _can_cancel(order):
         raise api_error(409, "ORDER_CANNOT_CANCEL", "Ab ye order cancel nahi ho sakta.")
 
     note = (reason or "").strip() or None
     previous = order.status
     qty_by_product: dict[uuid.UUID, int] = {}
-    for so in order.store_orders:
+    for so in live:
         db.add(_history(order.id, StoreOrderStatus.CANCELLED, user, "CUSTOMER", store_order_id=so.id, from_status=so.status, note=note))
         so.status = StoreOrderStatus.CANCELLED
         for i in so.items:
-            qty_by_product[i.product_id] = qty_by_product.get(i.product_id, 0) + i.quantity
+            if i.id not in removed_ids:
+                qty_by_product[i.product_id] = qty_by_product.get(i.product_id, 0) + i.quantity
 
     for pid in sorted(qty_by_product):  # stock wapas (ORDER_CANCEL)
         await adjust_stock(db, pid, qty_by_product[pid], StockReason.ORDER_CANCEL, actor=user, note=f"order {order.order_no} cancel")
@@ -241,5 +303,5 @@ async def cancel_order(db: AsyncSession, user: User, order_id: uuid.UUID, reason
     if order.payment_status == PaymentStatus.PENDING:
         order.payment_status = PaymentStatus.NOT_REQUIRED  # paisa liya hi nahi gaya tha
     db.add(_history(order.id, OrderStatus.CANCELLED, user, "CUSTOMER", from_status=previous, note=note))
+    await cancel_live_delivery(db, order.id, "customer ne order cancel kiya")  # partner ko free karo
     await db.commit()
-    return await _order_out(db, order, lang)

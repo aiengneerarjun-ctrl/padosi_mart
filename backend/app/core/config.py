@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     s3_access_key: str = ""
     s3_secret_key: str = ""
     s3_region: str = "us-east-1"
+    # KYC jaisi PRIVATE files (ID photo). Ye public /media se kabhi nahi dikhti, sirf backend se (admin) milti hain.
+    private_media_dir: str = "/code/private_media"  # sirf local ke liye
+    s3_private_bucket: str = "padosi-private"  # production me alag, private bucket (public access band)
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

@@ -62,3 +62,41 @@ def process_image(data: bytes) -> ProcessedImage:
         out.save(buf, format="WEBP", quality=75 if name == "thumb" else 82, method=4)
         variants[name] = buf.getvalue()
     return ProcessedImage(variants=variants, width=width, height=height)
+
+
+# ---------------- ID / KYC document photo ----------------
+DOC_MAX_SIDE = 1600  # ID ka likha hua padhne layak rahe, par file bhari na ho
+
+
+def process_document_image(data: bytes) -> bytes:
+    """ID / licence photo check karke ek WebP me badalta hai (square nahi karta, crop nahi karta).
+    Re-encode se EXIF / location data hat jaata hai. Checks process_image jaise hi hain."""
+    try:
+        img = Image.open(BytesIO(data))
+        if img.format not in ALLOWED_FORMATS:
+            raise ImageError("IMAGE_FORMAT_NOT_ALLOWED", "Sirf JPG, PNG ya WebP chalegi.")
+        if img.width * img.height > MAX_PIXELS:
+            raise ImageError("IMAGE_TOO_LARGE", "Photo bahut badi hai.", 413)
+        img.load()
+    except ImageError:
+        raise
+    except (UnidentifiedImageError, OSError, SyntaxError, ValueError, Image.DecompressionBombError):
+        raise ImageError("IMAGE_INVALID", "Ye file sahi photo nahi hai.")
+
+    img = ImageOps.exif_transpose(img)
+    if min(img.size) < MIN_SIDE:
+        raise ImageError("IMAGE_TOO_SMALL", "Photo bahut chhoti hai.")
+
+    if img.mode in ("RGBA", "LA", "P"):
+        rgba = img.convert("RGBA")
+        flat = Image.new("RGB", rgba.size, (255, 255, 255))
+        flat.paste(rgba, mask=rgba.split()[-1])
+        img = flat
+    else:
+        img = img.convert("RGB")
+
+    if max(img.size) > DOC_MAX_SIDE:
+        img.thumbnail((DOC_MAX_SIDE, DOC_MAX_SIDE), Image.LANCZOS)  # ratio badle bina chhota karta hai
+    buf = BytesIO()
+    img.save(buf, format="WEBP", quality=85, method=4)
+    return buf.getvalue()

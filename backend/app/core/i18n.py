@@ -245,6 +245,176 @@ MESSAGES: dict[str, dict[str, str]] = {
         "hi": "अब यह ऑर्डर रद्द नहीं हो सकता।",
         "bho": "अब ई ऑर्डर रद्द ना हो सकेला।",
     },
+        "ORDER_ITEM_NOT_FOUND": {
+        "en": "This item is not part of this order.",
+        "hi": "यह आइटम इस ऑर्डर में नहीं है।",
+        "bho": "ई सामान एह ऑर्डर में नइखे।",
+    },
+    "REMOVAL_NOTE_REQUIRED": {
+        "en": "Please write the reason when you choose Other.",
+        "hi": "'अन्य' चुनने पर कारण लिखना ज़रूरी है।",
+        "bho": "'दोसर' चुनला पर कारण लिखल जरूरी बा।",
+    },
+    "REMOVAL_REASON_OUT_OF_STOCK": {
+        "en": "Not available at the shop right now",
+        "hi": "दुकान में अभी उपलब्ध नहीं है",
+        "bho": "दोकान में अभी उपलब्ध नइखे",
+    },
+    "REMOVAL_REASON_QUALITY_ISSUE": {
+        "en": "Not in good condition at the shop",
+        "hi": "दुकान पर अच्छी हालत में नहीं है",
+        "bho": "दोकान पर ठीक हालत में नइखे",
+    },
+    "REMOVAL_REASON_SHOP_CLOSING": {
+        "en": "The shop is closing",
+        "hi": "दुकान बंद हो रही है",
+        "bho": "दोकान बंद होखे जात बा",
+    },
+    "REMOVAL_REASON_OTHER": {
+        "en": "Other reason",
+        "hi": "अन्य कारण",
+        "bho": "दोसर कारण",
+    },
+    "ORDER_NOTICE_ITEMS_REMOVED": {
+        "en": "{count} item(s) in your order are not available, so they were removed. The rest of your order will be delivered. Your new total is ₹{total}.",
+        "hi": "आपके ऑर्डर की {count} चीज़ें उपलब्ध नहीं हैं, इसलिए हटा दी गई हैं। बाकी ऑर्डर पहुँचाया जाएगा। आपका नया कुल ₹{total} है।",
+        "bho": "रउरा ऑर्डर के {count} सामान उपलब्ध नइखे, एहसे हटा दिहल गइल। बाकी ऑर्डर पहुँचावल जाई। रउरा नया कुल ₹{total} बा।",
+    },
+    "ORDER_NOTICE_ALL_REMOVED": {
+        "en": "None of the items could be supplied, so your order was cancelled. You will not be charged.",
+        "hi": "कोई भी सामान उपलब्ध नहीं हो सका, इसलिए आपका ऑर्डर रद्द कर दिया गया। आपसे कोई पैसा नहीं लिया जाएगा।",
+        "bho": "कउनो सामान उपलब्ध ना हो सकल, एहसे रउरा ऑर्डर रद्द हो गइल। रउरा से पइसा ना लिहल जाई।",
+    },
+        "ORDER_NOTICE_ITEMS_REMOVED_FEE": {
+        "en": "{count} item(s) in your order are not available, so they were removed. Your order is now below ₹{free_from}, so a delivery charge of ₹{fee} was added. Your new total is ₹{total}.",
+        "hi": "आपके ऑर्डर की {count} चीज़ें उपलब्ध नहीं हैं, इसलिए हटा दी गई हैं। अब आपका ऑर्डर ₹{free_from} से कम है, इसलिए ₹{fee} डिलीवरी चार्ज लगा है। आपका नया कुल ₹{total} है।",
+        "bho": "रउरा ऑर्डर के {count} सामान उपलब्ध नइखे, एहसे हटा दिहल गइल। अब रउरा ऑर्डर ₹{free_from} से कम बा, एहसे ₹{fee} डिलीवरी चार्ज लागल बा। रउरा नया कुल ₹{total} बा।",
+    },
+    "ORDER_NOTICE_CAN_CANCEL": {
+        "en": "If you do not want the rest of the order, you can cancel it now.",
+        "hi": "अगर आप बाकी ऑर्डर नहीं चाहते, तो अभी रद्द कर सकते हैं।",
+        "bho": "अगर रउरा बाकी ऑर्डर ना चाहीं, त अभी रद्द कर सकीला।",
+    },
+    "ACCEPT_WAIT": {
+        "en": "You removed items. Please wait 2 minutes so the customer can decide, then accept.",
+        "hi": "आपने आइटम हटाए हैं। ग्राहक को फ़ैसला करने का समय देने के लिए 2 मिनट बाद स्वीकार करें।",
+        "bho": "रउआ सामान हटवनी। ग्राहक के फैसला के समय देवे खातिर 2 मिनट बाद स्वीकार करीं।",
+    },
+        "PARTNER_EXISTS": {
+        "en": "Your delivery partner application already exists.",
+        "hi": "आपका डिलीवरी पार्टनर आवेदन पहले से मौजूद है।",
+        "bho": "रउरा डिलीवरी पार्टनर आवेदन पहिलहीं से बा।",
+    },
+    "NOT_A_PARTNER": {
+        "en": "Please apply as a delivery partner first.",
+        "hi": "पहले डिलीवरी पार्टनर के लिए आवेदन करें।",
+        "bho": "पहिले डिलीवरी पार्टनर खातिर आवेदन करीं।",
+    },
+    "PARTNER_NOT_FOUND": {
+        "en": "Delivery partner not found.",
+        "hi": "डिलीवरी पार्टनर नहीं मिला।",
+        "bho": "डिलीवरी पार्टनर ना मिलल।",
+    },
+    "PARTNER_NOT_ACTIVE": {
+        "en": "Your delivery partner account is not active yet.",
+        "hi": "आपका डिलीवरी पार्टनर अकाउंट अभी सक्रिय नहीं है।",
+        "bho": "रउरा डिलीवरी पार्टनर अकाउंट अभी चालू नइखे।",
+    },
+    "PARTNER_PHOTO_NOT_FOUND": {
+        "en": "This photo is not available.",
+        "hi": "यह फ़ोटो उपलब्ध नहीं है।",
+        "bho": "ई फोटो उपलब्ध नइखे।",
+    },
+    "VEHICLE_NUMBER_REQUIRED": {
+        "en": "Vehicle number is required for a bike or scooter.",
+        "hi": "बाइक या स्कूटर का नंबर लिखना ज़रूरी है।",
+        "bho": "बाइक चाहे स्कूटर के नंबर लिखल जरूरी बा।",
+    },
+    "VEHICLE_NUMBER_INVALID": {
+        "en": "The vehicle number is not valid.",
+        "hi": "गाड़ी का नंबर सही नहीं है।",
+        "bho": "गाड़ी के नंबर सही नइखे।",
+    },
+        "ORDER_NOT_AVAILABLE": {
+        "en": "This order is no longer available.",
+        "hi": "यह ऑर्डर अब उपलब्ध नहीं है।",
+        "bho": "ई ऑर्डर अब उपलब्ध नइखे।",
+    },
+    "PARTNER_BUSY": {
+        "en": "Please finish your current order first.",
+        "hi": "पहले अपना चल रहा ऑर्डर पूरा करें।",
+        "bho": "पहिले आपन चलत ऑर्डर पूरा करीं।",
+    },
+    "PARTNER_OFFLINE": {
+        "en": "Please go online first.",
+        "hi": "पहले ऑनलाइन हो जाइए।",
+        "bho": "पहिले ऑनलाइन हो जाईं।",
+    },
+    "DELIVERY_NOT_FOUND": {
+        "en": "You do not have this delivery (or it is already picked up).",
+        "hi": "यह डिलीवरी आपके पास नहीं है (या पिकअप हो चुका है)।",
+        "bho": "ई डिलीवरी रउरा लगे नइखे (चाहे पिकअप हो चुकल बा)।",
+    },
+    "NO_ACTIVE_DELIVERY": {
+        "en": "You have no active order right now.",
+        "hi": "अभी आपके पास कोई ऑर्डर नहीं है।",
+        "bho": "अभी रउरा लगे कौनो ऑर्डर नइखे।",
+    },
+        "ORDER_TOO_FAR": {
+        "en": "This order is outside your area.",
+        "hi": "यह ऑर्डर आपके इलाके से बाहर है।",
+        "bho": "ई ऑर्डर रउरा इलाका से बाहर बा।",
+    },
+        "STORE_NOT_READY": {
+        "en": "The shop is still preparing the items.",
+        "hi": "दुकान अभी सामान तैयार कर रही है।",
+        "bho": "दुकान अभी सामान तइयार करत बा।",
+    },
+    "STORE_PART_NOT_FOUND": {
+        "en": "This shop is not part of the order.",
+        "hi": "इस ऑर्डर में यह दुकान नहीं है।",
+        "bho": "ए ऑर्डर में ई दुकान नइखे।",
+    },
+    "ALREADY_PICKED_UP": {
+        "en": "The items are already picked up, you can no longer give up this order.",
+        "hi": "सामान उठ चुका है, अब ऑर्डर छोड़ नहीं सकते।",
+        "bho": "सामान उठ चुकल बा, अब ऑर्डर छोड़ ना सकीं।",
+    },
+    "NOT_ALL_PICKED_UP": {
+        "en": "Please pick up the items from all shops first.",
+        "hi": "पहले सभी दुकानों से सामान उठाइए।",
+        "bho": "पहिले सब दुकान से सामान उठाईं।",
+    },
+    "PARTNER_HAS_GOODS": {
+        "en": "The partner is carrying the customer's items. Let the delivery finish first.",
+        "hi": "पार्टनर के पास ग्राहक का सामान है, पहले डिलीवरी पूरी होने दें।",
+        "bho": "पार्टनर लगे ग्राहक के सामान बा, पहिले डिलीवरी पूरा होखे दीं।",
+    },
+    "PARTNER_ON_DELIVERY": {
+        "en": "Finish your current order before going offline.",
+        "hi": "ऑफ़लाइन होने से पहले चल रहा ऑर्डर पूरा करें।",
+        "bho": "ऑफलाइन होखे से पहिले चलत ऑर्डर पूरा करीं।",
+    },
+        "OTP_INVALID": {
+        "en": "The OTP is wrong.",
+        "hi": "OTP गलत है।",
+        "bho": "OTP गलत बा।",
+    },
+    "OTP_LOCKED": {
+        "en": "Too many wrong OTPs. Please try again after some time.",
+        "hi": "बहुत ज़्यादा गलत OTP डाले गए। थोड़ी देर बाद फिर कोशिश करें।",
+        "bho": "बहुत जादे गलत OTP डालल गइल। तनी देर बाद फेर कोशिश करीं।",
+    },
+        "DEPOSIT_EXCEEDS_CASH": {
+        "en": "The partner does not have that much cash.",
+        "hi": "पार्टनर के पास इतना कैश नहीं है।",
+        "bho": "पार्टनर लगे एतना कैश नइखे।",
+    },
+    "DEPOSIT_CORRECTION_TOO_BIG": {
+        "en": "A correction cannot be more than the cash deposited so far.",
+        "hi": "सुधार अब तक जमा किए गए कैश से ज़्यादा नहीं हो सकता।",
+        "bho": "सुधार अबले जमा कइल कैश से जादे ना हो सकेला।",
+    },
     "VALIDATION_ERROR": {
         "en": "Some of the information is not valid.",
         "hi": "कुछ जानकारी सही नहीं है।",
@@ -287,3 +457,6 @@ def localized(obj, lang: str, base: str = "name") -> str:
     if lang in ("hi", "bho"):
         return getattr(obj, f"{base}_{lang}", None) or getattr(obj, base)
     return getattr(obj, base)
+def translate_fmt(code: str, lang: str, **params) -> str:
+    """Jin messages me {count}, {total} jaise khali jagah hain unke liye."""
+    return translate(code, lang).format(**params)

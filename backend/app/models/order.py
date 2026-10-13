@@ -39,6 +39,13 @@ class StoreOrderStatus(StrEnum):
     CANCELLED = "CANCELLED"
     REJECTED = "REJECTED"
 
+class RemovalReason(StrEnum):
+    """Seller ne item kyun hataya (customer ko apni bhasha me dikhta hai)."""
+
+    OUT_OF_STOCK = "OUT_OF_STOCK"
+    QUALITY_ISSUE = "QUALITY_ISSUE"
+    SHOP_CLOSING = "SHOP_CLOSING"
+    OTHER = "OTHER"
 
 class PaymentMethod(StrEnum):
     COD = "COD"
@@ -92,11 +99,15 @@ class Order(Base):
     items_subtotal: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     delivery_fee: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     total: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    # Order jis haal me bana tha. Seller ne kuch items hataye to items_subtotal/total ghatte hain, ye dono nahi badalte.
+    original_items_subtotal: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    original_total: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     note: Mapped[str | None] = mapped_column(String(300))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     store_orders: Mapped[list["StoreOrder"]] = relationship(lazy="selectin", order_by="StoreOrder.created_at")
+    removals: Mapped[list["OrderItemRemoval"]] = relationship(lazy="selectin", order_by="OrderItemRemoval.created_at")
 
     @property
     def order_number(self) -> str:
@@ -170,4 +181,24 @@ class OrderStatusHistory(Base):
     actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     actor_role: Mapped[str] = mapped_column(String(20))  # CUSTOMER / SELLER / DELIVERY_PARTNER / SUPER_ADMIN / SYSTEM
     note: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+class OrderItemRemoval(Base):
+    """Seller ne order ka ek item hataya ("saaman nahi hai"). order_items ki line jaisi thi waisi hi rehti hai,
+    hatane ka record yahan judta hai. Badla/hataya nahi jaata (database trigger bhi rokta hai)."""
+
+    __tablename__ = "order_item_removals"
+    __table_args__ = (
+        CheckConstraint(f"reason_code IN ({_in(RemovalReason)})", name="ck_order_item_removals_reason"),
+        Index("ix_order_item_removals_order", "order_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    order_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orders.id"))
+    store_order_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("store_orders.id"))
+    order_item_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("order_items.id"), unique=True)  # ek item ek hi baar hatega
+    reason_code: Mapped[str] = mapped_column(String(20))
+    note: Mapped[str | None] = mapped_column(String(200))  # seller ka likha karan (customer ko dikhta hai)
+    line_total: Mapped[Decimal] = mapped_column(Numeric(10, 2))  # kitne ka saaman hata
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

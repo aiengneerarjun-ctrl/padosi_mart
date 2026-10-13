@@ -7,11 +7,12 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api.v1 import admin, admin_catalog, auth, cart, catalog, checkout, customer, health, orders, product_images, products, sellers, shop, stores, users
+from app.api.v1 import admin, admin_catalog, admin_delivery, admin_delivery_cash, auth, cart, catalog, checkout, customer, delivery, health, orders, product_images, products, seller_orders, sellers, shop, stores, users
+
 from app.core.config import settings
 from app.core.i18n import DEFAULT_LANG, resolve_lang, translate
 
-app = FastAPI(title="Padosi API", version="0.10.0")
+app = FastAPI(title="Padosi API", version="0.11.0")
 
 
 @app.middleware("http")
@@ -65,6 +66,10 @@ app.include_router(customer.router, prefix="/api/v1")
 app.include_router(cart.router, prefix="/api/v1")
 app.include_router(checkout.router, prefix="/api/v1")
 app.include_router(orders.router, prefix="/api/v1")
+app.include_router(seller_orders.router, prefix="/api/v1")
+app.include_router(delivery.router, prefix="/api/v1")
+app.include_router(admin_delivery.router, prefix="/api/v1")
+app.include_router(admin_delivery_cash.router, prefix="/api/v1")
 
 # Dev me photos yahin se dikhti hain (production me S3/CDN se, tab ye block chalta hi nahi)
 if settings.storage_backend == "local":

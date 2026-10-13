@@ -26,6 +26,25 @@ class OrderItemOut(BaseModel):
     unit_price: float
     quantity: int
     line_total: float
+    # Seller ne ye item hata diya ho to: removed=true, aur karan customer ki bhasha me
+    removed: bool = False
+    removed_reason_code: str | None = None
+    removed_reason: str | None = None
+    removed_note: str | None = None
+
+
+class RemovedItemOut(BaseModel):
+    """Seller ne jo item hataya: customer ke liye alag list (banner / "ye saaman nahi mila" screen)."""
+
+    product_id: uuid.UUID
+    name: str  # customer ki bhasha me
+    selling_unit: str
+    quantity: int
+    line_total: float  # itne rupaye ghate
+    store_name: str
+    reason_code: str
+    reason: str  # customer ki bhasha me
+    note: str | None
 
 
 class StoreOrderOut(BaseModel):
@@ -36,7 +55,7 @@ class StoreOrderOut(BaseModel):
     store_name: str
     store_address: str
     status: str
-    items_subtotal: float
+    items_subtotal: float  # hataye gaye items ke baad ka
     items: list[OrderItemOut]
 
 
@@ -65,9 +84,20 @@ class OrderOut(BaseModel):
     payment_method: str
     payment_status: str
     address: AddressSnapshotOut
-    items_subtotal: float
+    items_subtotal: float  # abhi ka (hataye gaye items ke baad)
     delivery_fee: float
-    total: float
+    total: float  # abhi ka naya total
+    # Hisaab: original_total - removed_total = total (delivery charge waisa hi)
+    original_items_subtotal: float
+    original_total: float
+    removed_total: float
+    delivery_fee_added: float  # items hatne se total 799 se neeche gaya to jo delivery charge naya laga (warna 0)
+    can_cancel: bool  # customer abhi order cancel kar sakta hai
+    seller_can_accept_after: datetime | None  # item hatne ke baad seller isse pehle accept nahi kar sakta (cancel ka mauka)
+    amount_due: float  # COD me delivery par kitna dena hai (cancel/paid order me 0)
+    delivery_otp: str | None = None  # sirf OUT_FOR_DELIVERY me: delivery partner ko batane ka 4 ank ka OTP
+    removed_items: list[RemovedItemOut]
+    notice: str | None  # customer ki bhasha me ek line ka sandesh (kuch hata ho tab)
     note: str | None
     created_at: datetime
     stores: list[StoreOrderOut]
@@ -81,6 +111,7 @@ class OrderSummary(BaseModel):
     payment_method: str
     payment_status: str
     total: float
+    has_removed_items: bool
     store_names: list[str]
-    item_count: int
+    item_count: int  # hataye gaye items ke bina
     created_at: datetime

@@ -17,6 +17,10 @@ class StorageError(Exception):
     """Storage se baat nahi ho paayi."""
 
 
+class StorageNotFound(StorageError):
+    """Ye key storage me hai hi nahi."""
+
+
 def public_url(key: str) -> str:
     return f"{settings.media_public_url.rstrip('/')}/{key}"
 
@@ -30,25 +34,25 @@ def _use_s3() -> bool:
 # ---------------- local (dev) ----------------
 
 
-def _local_path(key: str) -> Path:
-    base = Path(settings.media_dir).resolve()
+def _local_path(key: str, root: str | None = None) -> Path:
+    base = Path(root or settings.media_dir).resolve()
     path = (base / key).resolve()
     if base not in path.parents:  # key me ../ jaisa kuch ho to bahar likhne se roko
         raise StorageError(key)
     return path
 
 
-def _local_write(key: str, data: bytes) -> None:
-    path = _local_path(key)
+def _local_write(key: str, data: bytes, root: str | None = None) -> None:
+    path = _local_path(key, root)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_bytes(data)
     os.replace(tmp, path)  # adhuri file kabhi dikhai nahi deti
 
 
-def _local_delete(keys: list[str]) -> None:
+def _local_delete(keys: list[str], root: str | None = None) -> None:
     for key in keys:
-        path = _local_path(key)
+        path = _local_path(key, root)
         path.unlink(missing_ok=True)
         try:
             path.parent.rmdir()  # photo ka folder khali ho gaya to hata do
@@ -128,3 +132,86 @@ async def delete_objects(keys: list[str]) -> None:
             )
     except Exception as exc:  # noqa: BLE001
         logger.error("storage delete failed for %s: %s", keys, exc)
+
+
+# ---------------- PRIVATE files (KYC / ID photo) ----------------
+# Public /media se alag folder (local) ya alag bucket (s3). Inka koi public URL nahi hota;
+# file sirf backend padhta hai aur sirf permission wale user (Super Admin) ko deta hai.
+
+
+def _local_read(key: str, root: str) -> bytes:
+    path = _local_path(key, root)
+    try:
+        return path.read_bytes()
+    except FileNotFoundError as exc:
+        raise StorageNotFound(key) from exc
+
+
+async def put_private_object(key: str, data: bytes, content_type: str) -> None:
+    if not _use_s3():
+        try:
+            await asyncio.to_thread(_local_write, key, data, settings.private_media_dir)
+        except OSError as exc:
+            logger.error("private local write failed for %s: %s", key, exc)
+            raise StorageError(key) from exc
+        return
+
+    from botocore.exceptions import BotoCoreError, ClientError
+
+    try:
+        await asyncio.to_thread(
+            _s3().put_object,
+            Bucket=settings.s3_private_bucket,
+            Key=key,
+            Body=data,
+            ContentType=content_type,
+            CacheControl="private, no-store",
+        )
+    except (BotoCoreError, ClientError) as exc:
+        logger.error("private put failed for %s: %s", key, exc)
+        raise StorageError(key) from exc
+
+
+async def get_private_object(key: str) -> bytes:
+    """File ke bytes lautata hai. Nahi mili to StorageNotFound, storage kharab ho to StorageError."""
+    if not _use_s3():
+        try:
+            return await asyncio.to_thread(_local_read, key, settings.private_media_dir)
+        except StorageNotFound:
+            raise
+        except OSError as exc:
+            logger.error("private local read failed for %s: %s", key, exc)
+            raise StorageError(key) from exc
+
+    from botocore.exceptions import BotoCoreError, ClientError
+
+    def _get() -> bytes:
+        return _s3().get_object(Bucket=settings.s3_private_bucket, Key=key)["Body"].read()
+
+    try:
+        return await asyncio.to_thread(_get)
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") in ("NoSuchKey", "404", "NotFound"):
+            raise StorageNotFound(key) from exc
+        logger.error("private get failed for %s: %s", key, exc)
+        raise StorageError(key) from exc
+    except BotoCoreError as exc:
+        logger.error("private get failed for %s: %s", key, exc)
+        raise StorageError(key) from exc
+
+
+async def delete_private_objects(keys: list[str]) -> None:
+    """Best effort (delete_objects jaisa): fail ho to sirf log likhta hai."""
+    if not keys:
+        return
+    try:
+        if not _use_s3():
+            await asyncio.to_thread(_local_delete, keys, settings.private_media_dir)
+        else:
+            await asyncio.to_thread(
+                _s3().delete_objects,
+                Bucket=settings.s3_private_bucket,
+                Delete={"Objects": [{"Key": k} for k in keys], "Quiet": True},
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.error("private delete failed for %s: %s", keys, exc)
