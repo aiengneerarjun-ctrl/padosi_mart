@@ -26,6 +26,7 @@ from app.models.order import OrderStatus, PaymentStatus, StoreOrderStatus
 from app.schemas.delivery_admin import FailedOut
 from app.schemas.delivery_assignment import DeliveredOut, MyDeliveryOut
 from app.services.delivery_earnings import earning_for
+from app.services.settlement import apply_commission
 from app.services.delivery_assignment import (
     INACTIVE_STORE,
     _history,
@@ -155,6 +156,7 @@ async def complete_delivery(db: AsyncSession, user: User, order_id: uuid.UUID, o
     delivery.status = DeliveryStatus.DELIVERED
     delivery.delivered_at = now
     delivery.earning = earning
+    await apply_commission(db, order)  # har dukaan-hisse par abhi ka commission fix (seller ka hisaab)
     delivery.cod_collected = order.total if owed > 0 else Decimal("0.00")
     delivery.otp_attempts = 0
     delivery.otp_locked_until = None

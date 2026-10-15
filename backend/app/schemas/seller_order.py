@@ -18,6 +18,7 @@ class SellerOrderItem(BaseModel):
     removed: bool = False  # is item ko seller hata chuka hai
     removed_reason_code: str | None = None
     removed_reason: str | None = None
+    removed_kept_quantity: int | None = None  # aadha saaman: itne piece dukaan ne de diye (nayi line me)
 
 
 class SellerOrderOut(BaseModel):
@@ -40,6 +41,8 @@ class UnavailableItem(BaseModel):
     item_id: uuid.UUID
     reason: RemovalReasonCode = "OUT_OF_STOCK"
     note: str | None = Field(default=None, max_length=200)  # customer ko dikhta hai
+    # Aadha saaman: dukaan ke paas itne piece hain (maange se kam). 0 = ek bhi nahi (poora item hat jaata hai).
+    available_quantity: int = Field(default=0, ge=0, le=100000)
 
 
 class UnavailableBody(BaseModel):

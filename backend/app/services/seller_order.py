@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import api_error
 from app.core.i18n import localized, translate
-from app.models import Delivery, Order, OrderStatusHistory, Seller, StoreOrder, User
+from app.models import Delivery, Order, OrderItem, OrderStatusHistory, Seller, StoreOrder, User
 from app.models.catalog import StockReason
 from app.models.order import OrderItemRemoval, OrderStatus, PaymentStatus, RemovalReason, StoreOrderStatus
 from app.models.seller import SellerStatus
@@ -45,6 +45,7 @@ TRANSITIONS: dict[str, tuple[str, ...]] = {
 CAN_REMOVE_ITEMS_IN = (S.PLACED,)
 # Item hatane ke baad itne second tak seller accept nahi kar sakta (customer ko cancel ka mauka)
 ACCEPT_WAIT_SECONDS = 120
+CENT = Decimal("0.01")
 ROLLUP_RANK = {S.SELLER_ACCEPTED: 1, S.PREPARING: 2, S.READY_FOR_PICKUP: 3, S.PICKED_UP: 3}  # PICKED_UP = tayyar se aage, par order ko READY hi ginte hain
 ROLLUP_ORDER_STATUS = {1: OrderStatus.SELLER_ACCEPTED, 2: OrderStatus.PREPARING, 3: OrderStatus.READY_FOR_PICKUP}
 INACTIVE = (S.REJECTED, S.CANCELLED)
@@ -88,6 +89,7 @@ def _out(so: StoreOrder, order: Order, lang: str) -> SellerOrderOut:
                 unit_price=float(i.unit_price), line_total=float(i.line_total), removed=i.id in removal_of,
                 removed_reason_code=removal_of[i.id].reason_code if i.id in removal_of else None,
                 removed_reason=translate(f"REMOVAL_REASON_{removal_of[i.id].reason_code}", lang) if i.id in removal_of else None,
+                removed_kept_quantity=removal_of[i.id].kept_quantity if i.id in removal_of else None,
             )
             for i in so.items
         ],
@@ -179,40 +181,57 @@ async def move(db: AsyncSession, seller: Seller, user: User, store_order_id: uui
     order, so = await _reload(db, order.id, so.id)
     return _out(so, order, lang)
 
-
 async def _remove_items(
-    db: AsyncSession, order: Order, so: StoreOrder, user: User, picks: dict[uuid.UUID, tuple[str, str | None]]
+    db: AsyncSession, order: Order, so: StoreOrder, user: User, picks: dict[uuid.UUID, tuple[str, str | None, int]]
 ) -> int:
-    """picks = {order_item_id: (reason_code, note)}. Naye hataye gaye items ki ginti lautata hai (pehle se hate hue chhod deta hai)."""
+    """picks = {order_item_id: (reason_code, note, kept_quantity)}. kept_quantity = dukaan itne piece de sakti hai (0 = ek bhi nahi).
+    Aadha saaman (kept > 0): purani line poori 'hatayi' jaati hai (record me kept_* likha), aur bache piece ki NAYI line judti hai;
+    isse baaki sab code (partner ki list, return, cancel ka stock) bina badle sahi chalta hai.
+    Naye hataye gaye items ki ginti lautata hai (pehle se hate hue chhod deta hai)."""
     already = {r.order_item_id for r in order.removals}
     new = [i for i in so.items if i.id in picks and i.id not in already]
     if not new:
         return 0
 
-    # Stock: hataye item ka stock wapas; OUT_OF_STOCK ho to bacha hua bhi 0 (product_id ke order me, deadlock se bachne ke liye)
+    # Stock: sirf wo piece wapas jo dukaan nahi de rahi; OUT_OF_STOCK ho to bacha hua bhi 0 (product_id ke order me, deadlock se bachne ke liye)
     per_product: dict[uuid.UUID, tuple[int, bool]] = {}
     for i in new:
+        code, _, kept = picks[i.id]
         qty, zero = per_product.get(i.product_id, (0, False))
-        per_product[i.product_id] = (qty + i.quantity, zero or picks[i.id][0] == RemovalReason.OUT_OF_STOCK)
+        per_product[i.product_id] = (qty + i.quantity - kept, zero or code == RemovalReason.OUT_OF_STOCK)
     for pid in sorted(per_product):
         qty, zero = per_product[pid]
         left = await adjust_stock(db, pid, qty, StockReason.ORDER_CANCEL, actor=user, note=f"order {order.order_no}: seller ne item hataya")
         if zero and left > 0:
             await adjust_stock(db, pid, -left, StockReason.ADJUSTMENT, actor=user, note=f"order {order.order_no}: seller ne kaha saaman nahi hai")
 
+    removed_amount = Decimal("0")
+    removals: list[OrderItemRemoval] = []
     for i in new:
-        code, note = picks[i.id]
-        db.add(
+        code, note, kept = picks[i.id]
+        cut = (i.unit_price * (i.quantity - kept)).quantize(CENT)  # sirf wo hissa jo hata
+        removed_amount += cut
+        kept_item = None
+        if kept:
+            kept_item = OrderItem(
+                id=uuid.uuid4(), order_id=order.id, store_order_id=so.id, product_id=i.product_id, name=i.name, name_hi=i.name_hi,
+                name_bho=i.name_bho, selling_unit=i.selling_unit, mrp=i.mrp, unit_price=i.unit_price, quantity=kept,
+                line_total=(i.unit_price * kept).quantize(CENT),
+            )
+            db.add(kept_item)
+            so.items.append(kept_item)
+        removals.append(
             OrderItemRemoval(
-                order_id=order.id, store_order_id=so.id, order_item_id=i.id, reason_code=code, note=note,
-                line_total=i.line_total, actor_id=user.id,
+                order_id=order.id, store_order_id=so.id, order_item_id=i.id, reason_code=code, note=note, line_total=cut,
+                kept_quantity=kept or None, kept_item_id=kept_item.id if kept_item else None, actor_id=user.id,
             )
         )
+    await db.flush()  # bachi hui nayi lines pehle likho, phir hatane ke record (jo unhe pakadte hain)
+    db.add_all(removals)
     removed_ids = already | {i.id for i in new}
 
-    # Is dukaan ka naya hisaab
+    # Is dukaan ka naya hisaab (bache hue piece ki nayi line bhi judti hai)
     so.items_subtotal = sum((i.line_total for i in so.items if i.id not in removed_ids), Decimal("0"))
-    removed_amount = sum((i.line_total for i in new), Decimal("0"))
     if all(i.id in removed_ids for i in so.items):  # dukaan ke saare items hat gaye = poora hissa REJECTED
         db.add(_history(order.id, S.REJECTED, store_order_id=so.id, from_status=so.status, actor=user, role="SELLER", note="saare items available nahi"))
         so.status = S.REJECTED
@@ -241,15 +260,19 @@ async def _remove_items(
         )
     return len(new)
 
-def _clean_picks(items: list[UnavailableItem], valid_ids: set[uuid.UUID]) -> dict[uuid.UUID, tuple[str, str | None]]:
-    picks: dict[uuid.UUID, tuple[str, str | None]] = {}
+
+def _clean_picks(items: list[UnavailableItem], qty_of: dict[uuid.UUID, int]) -> dict[uuid.UUID, tuple[str, str | None, int]]:
+    """qty_of = {order_item_id: maange gaye piece}. available_quantity maange se kam hona chahiye (0 = poora item hatao)."""
+    picks: dict[uuid.UUID, tuple[str, str | None, int]] = {}
     for it in items:
-        if it.item_id not in valid_ids:
+        if it.item_id not in qty_of:
             raise api_error(404, "ORDER_ITEM_NOT_FOUND", "Ye saaman is order me nahi hai.")
+        if it.available_quantity >= qty_of[it.item_id]:
+            raise api_error(422, "AVAILABLE_QUANTITY_TOO_HIGH", "Available quantity maange gaye quantity se kam honi chahiye.")
         note = (it.note or "").strip() or None
         if it.reason == RemovalReason.OTHER and (note is None or len(note) < 3):
             raise api_error(422, "REMOVAL_NOTE_REQUIRED", "'Other' chunne par karan likhna zaroori hai.")
-        picks[it.item_id] = (it.reason, note)
+        picks[it.item_id] = (it.reason, note, it.available_quantity)
     return picks
 
 
@@ -259,7 +282,7 @@ async def mark_unavailable(
     """Kuch items dukaan me nahi hain: unhe hatao, baaki order chalta rahega."""
     _require_active(seller)
     order, so = await _lock(db, seller, store_order_id)
-    picks = _clean_picks(items, {i.id for i in so.items})
+    picks = _clean_picks(items, {i.id: i.quantity for i in so.items})
     if all(i in {r.order_item_id for r in order.removals} for i in picks):  # sab pehle hi hat chuke: kuch nahi badalta
         return _out(so, order, lang)
     if order.status == OrderStatus.CANCELLED or so.status not in CAN_REMOVE_ITEMS_IN:
@@ -281,7 +304,7 @@ async def reject(
     if order.status == OrderStatus.CANCELLED or not can_move(so.status, S.REJECTED):
         raise api_error(409, "INVALID_STATE", "Abhi ki halat me ye kaam nahi ho sakta.")
     note = reason.strip()
-    await _remove_items(db, order, so, user, {i.id: (reason_code, note) for i in so.items})
+    await _remove_items(db, order, so, user, {i.id: (reason_code, note, 0) for i in so.items})
     await db.commit()
     order, so = await _reload(db, order.id, so.id)
     return _out(so, order, lang)

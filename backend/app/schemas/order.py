@@ -31,6 +31,7 @@ class OrderItemOut(BaseModel):
     removed_reason_code: str | None = None
     removed_reason: str | None = None
     removed_note: str | None = None
+    removed_kept_quantity: int | None = None  # aadha saaman: itne piece mil gaye (nayi line me)
 
 
 class RemovedItemOut(BaseModel):
@@ -45,6 +46,7 @@ class RemovedItemOut(BaseModel):
     reason_code: str
     reason: str  # customer ki bhasha me
     note: str | None
+    kept_quantity: int | None = None  # aadha saaman: itne piece mil gaye; quantity / line_total sirf hata hua hissa
 
 
 class StoreOrderOut(BaseModel):

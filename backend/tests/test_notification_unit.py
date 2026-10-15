@@ -23,6 +23,7 @@ CODES = {
     "ORDER_ITEMS_REMOVED": {"order_no", "store_name", "count", "minutes"},
     "SELLER_NEW_ORDER": {"order_no", "store_name"},
     "PAYOUT_RECEIVED": {"amount"},
+    "SELLER_PAYOUT_RECEIVED": {"amount"},
 }
 
 

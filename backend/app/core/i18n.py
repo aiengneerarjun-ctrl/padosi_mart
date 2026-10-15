@@ -540,6 +540,31 @@ MESSAGES: dict[str, dict[str, str]] = {
         "hi": "आपकी डिलीवरी की कमाई के ₹{amount} आपको दिए गए।",
         "bho": "रउरा डिलीवरी के कमाई के ₹{amount} दिहल गइल।",
     },
+        "AVAILABLE_QUANTITY_TOO_HIGH": {
+        "en": "Available quantity must be less than the quantity ordered.",
+        "hi": "उपलब्ध मात्रा मँगाई गई मात्रा से कम होनी चाहिए।",
+        "bho": "मौजूद मात्रा मँगावल मात्रा से कम होखे के चाही।",
+    },
+        "SETTLEMENT_EXCEEDS_DUE": {
+        "en": "The seller is not owed that much.",
+        "hi": "सेलर का इतना पैसा बाकी नहीं है।",
+        "bho": "सेलर के एतना पइसा बाकी नइखे।",
+    },
+    "SETTLEMENT_CORRECTION_TOO_BIG": {
+        "en": "A correction cannot be more than the amount paid so far.",
+        "hi": "सुधार अब तक दिए गए पैसे से ज़्यादा नहीं हो सकता।",
+        "bho": "सुधार अबले दिहल पइसा से जादे ना हो सकेला।",
+    },
+    "NOTIF_SELLER_PAYOUT_RECEIVED_TITLE": {
+        "en": "Payment received",
+        "hi": "भुगतान मिला",
+        "bho": "भुगतान मिलल",
+    },
+    "NOTIF_SELLER_PAYOUT_RECEIVED_BODY": {
+        "en": "Admin paid you ₹{amount} for your sales.",
+        "hi": "आपकी बिक्री के ₹{amount} आपको दिए गए।",
+        "bho": "रउरा बिक्री के ₹{amount} दिहल गइल।",
+    },
     "VALIDATION_ERROR": {
         "en": "Some of the information is not valid.",
         "hi": "कुछ जानकारी सही नहीं है।",

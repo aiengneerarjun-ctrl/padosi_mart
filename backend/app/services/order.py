@@ -172,6 +172,7 @@ async def _order_out(db: AsyncSession, order: Order, lang: str) -> OrderOut:
             unit_price=float(i.unit_price), quantity=i.quantity, line_total=float(i.line_total),
             removed=r is not None, removed_reason_code=r.reason_code if r else None,
             removed_reason=_removal_label(r.reason_code, lang) if r else None, removed_note=r.note if r else None,
+            removed_kept_quantity=r.kept_quantity if r else None,
         )
 
     stores = [
@@ -182,10 +183,12 @@ async def _order_out(db: AsyncSession, order: Order, lang: str) -> OrderOut:
         for so in order.store_orders
     ]
     removed_items = [
-        RemovedItemOut(
-            product_id=i.product_id, name=localized(i, lang), selling_unit=i.selling_unit, quantity=i.quantity,
-            line_total=float(i.line_total), store_name=so.store_name, reason_code=removal_of[i.id].reason_code,
+           RemovedItemOut(
+            product_id=i.product_id, name=localized(i, lang), selling_unit=i.selling_unit,
+            quantity=i.quantity - (removal_of[i.id].kept_quantity or 0),  # aadha saaman me sirf jo nahi mila
+            line_total=float(removal_of[i.id].line_total), store_name=so.store_name, reason_code=removal_of[i.id].reason_code,
             reason=_removal_label(removal_of[i.id].reason_code, lang), note=removal_of[i.id].note,
+            kept_quantity=removal_of[i.id].kept_quantity,
         )
         for so in order.store_orders for i in so.items if i.id in removal_of
     ]

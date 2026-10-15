@@ -124,6 +124,11 @@ class StoreOrder(Base):
         UniqueConstraint("order_id", "store_id", name="uq_store_orders_order_store"),
         CheckConstraint(f"status IN ({_in(StoreOrderStatus)})", name="ck_store_orders_status"),
         CheckConstraint("items_subtotal >= 0", name="ck_store_orders_subtotal"),
+        CheckConstraint(
+            "(commission_rate IS NULL AND commission_amount IS NULL) OR "
+            "(commission_rate BETWEEN 0 AND 100 AND commission_amount >= 0 AND commission_amount <= items_subtotal)",
+            name="ck_store_orders_commission",
+        ),
         Index("ix_store_orders_store_status", "store_id", "status", "created_at"),
     )
 
@@ -136,7 +141,8 @@ class StoreOrder(Base):
     store_address: Mapped[str] = mapped_column(String(300))
     store_latitude: Mapped[Decimal] = mapped_column(Numeric(9, 6))
     store_longitude: Mapped[Decimal] = mapped_column(Numeric(9, 6))
-    items_subtotal: Mapped[Decimal] = mapped_column(Numeric(10, 2))  # is dukaan ke saaman ka total
+    items_subtotal: Mapped[Decimal] = mapped_column(Numeric(10, 2))  # is dukaan ke saaman ka totalcommission_rate: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))  # percent; delivery poori hone par fix (None = abhi nahi)
+    commission_amount: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))  # platform ka hissa; seller ko milega items_subtotal - ye
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -190,6 +196,10 @@ class OrderItemRemoval(Base):
     __tablename__ = "order_item_removals"
     __table_args__ = (
         CheckConstraint(f"reason_code IN ({_in(RemovalReason)})", name="ck_order_item_removals_reason"),
+        CheckConstraint(
+            "(kept_quantity IS NULL AND kept_item_id IS NULL) OR (kept_quantity > 0 AND kept_item_id IS NOT NULL)",
+            name="ck_order_item_removals_kept",
+        ),
         Index("ix_order_item_removals_order", "order_id"),
     )
 
@@ -199,6 +209,8 @@ class OrderItemRemoval(Base):
     order_item_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("order_items.id"), unique=True)  # ek item ek hi baar hatega
     reason_code: Mapped[str] = mapped_column(String(20))
     note: Mapped[str | None] = mapped_column(String(200))  # seller ka likha karan (customer ko dikhta hai)
-    line_total: Mapped[Decimal] = mapped_column(Numeric(10, 2))  # kitne ka saaman hata
+    line_total: Mapped[Decimal] = mapped_column(Numeric(10, 2))  # kitne ka saaman hata (aadha saaman me sirf hata hua hissa)
+    kept_quantity: Mapped[int | None] = mapped_column(Integer)  # aadha saaman: dukaan ne itne piece de diye (None = poora item hata)
+    kept_item_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("order_items.id"))  # bache hue piece ki nayi line
     actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
