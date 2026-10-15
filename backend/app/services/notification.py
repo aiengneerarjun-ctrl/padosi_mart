@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import api_error
 from app.core.i18n import MESSAGES
-from app.models import Notification, Order, OrderStatusHistory, User
+from app.models import Notification, Order, OrderStatusHistory,Seller, User
 from app.models.order import OrderStatus
 from app.schemas.notification import NotificationOut
 
@@ -106,3 +106,9 @@ async def mark_all_read(db: AsyncSession, user: User) -> int:
     )
     await db.commit()
     return res.rowcount or 0
+async def notify_sellers_new_order(db: AsyncSession, order: Order) -> None:
+    """Order ke har zinda dukaan-hisse ke seller ko "naya order" (usi transaction me). ONLINE payment hone ke baad bulate hain."""
+    live = [so for so in order.store_orders if so.status not in ("REJECTED", "CANCELLED")]
+    users = dict((await db.execute(select(Seller.id, Seller.user_id).where(Seller.id.in_({so.seller_id for so in live})))).all()) if live else {}
+    for so in live:
+        add(db, users[so.seller_id], "SELLER_NEW_ORDER", {"order_no": order.order_number, "store_name": so.store_name}, order.id)

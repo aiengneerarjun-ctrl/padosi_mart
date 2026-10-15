@@ -565,6 +565,61 @@ MESSAGES: dict[str, dict[str, str]] = {
         "hi": "आपकी बिक्री के ₹{amount} आपको दिए गए।",
         "bho": "रउरा बिक्री के ₹{amount} दिहल गइल।",
     },
+        "PAYMENT_NOT_ALLOWED": {
+        "en": "Payment is not possible for this order.",
+        "hi": "इस ऑर्डर के लिए पेमेंट नहीं हो सकता।",
+        "bho": "एह ऑर्डर खातिर पेमेंट ना हो सकेला।",
+    },
+    "PAYMENT_ALREADY_PAID": {
+        "en": "This order is already paid.",
+        "hi": "इस ऑर्डर का पेमेंट हो चुका है।",
+        "bho": "एह ऑर्डर के पेमेंट हो चुकल बा।",
+    },
+    "PAYMENT_EXPIRED": {
+        "en": "Payment time is over. Please place a new order.",
+        "hi": "पेमेंट का समय निकल गया। कृपया नया ऑर्डर करें।",
+        "bho": "पेमेंट के समय निकल गइल। कृपया नया ऑर्डर करीं।",
+    },
+    "PAYMENT_PROVIDER_ERROR": {
+        "en": "Could not start payment. Please try again in a while.",
+        "hi": "पेमेंट शुरू नहीं हो पाया। थोड़ी देर बाद फिर कोशिश करें।",
+        "bho": "पेमेंट शुरू ना हो पाइल। तनी देर बाद फेर कोशिश करीं।",
+    },
+    "PAYMENT_NOT_FOUND": {
+        "en": "Payment not found for this order.",
+        "hi": "इस ऑर्डर का पेमेंट नहीं मिला।",
+        "bho": "एह ऑर्डर के पेमेंट ना मिलल।",
+    },
+    "INVALID_SIGNATURE": {
+        "en": "Invalid signature.",
+        "hi": "सिग्नेचर गलत है।",
+        "bho": "सिग्नेचर गलत बा।",
+    },
+    "INVALID_WEBHOOK": {
+        "en": "Invalid webhook body.",
+        "hi": "वेबहुक का बॉडी सही नहीं है।",
+        "bho": "वेबहुक के बॉडी सही नइखे।",
+    },
+    "REFUND_EXCEEDS_PAID": {
+        "en": "That much cannot be refunded.",
+        "hi": "इतना पैसा वापस नहीं किया जा सकता।",
+        "bho": "एतना पइसा वापस ना कइल जा सकेला।",
+    },
+    "REFUND_NOT_FOUND": {
+        "en": "Refund not found.",
+        "hi": "रिफंड नहीं मिला।",
+        "bho": "रिफंड ना मिलल।",
+    },
+    "NOTIF_REFUND_INITIATED_TITLE": {
+        "en": "Refund started",
+        "hi": "रिफंड शुरू हुआ",
+        "bho": "रिफंड शुरू भइल",
+    },
+    "NOTIF_REFUND_INITIATED_BODY": {
+        "en": "₹{amount} of {order_no} is being refunded to your payment method.",
+        "hi": "{order_no} के ₹{amount} आपके पेमेंट के तरीके में वापस भेजे जा रहे हैं।",
+        "bho": "{order_no} के ₹{amount} रउरा पेमेंट के तरीका में वापस भेजल जा रहल बा।",
+    },
     "VALIDATION_ERROR": {
         "en": "Some of the information is not valid.",
         "hi": "कुछ जानकारी सही नहीं है।",

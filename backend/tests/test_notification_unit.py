@@ -24,6 +24,7 @@ CODES = {
     "SELLER_NEW_ORDER": {"order_no", "store_name"},
     "PAYOUT_RECEIVED": {"amount"},
     "SELLER_PAYOUT_RECEIVED": {"amount"},
+    "REFUND_INITIATED": {"order_no", "amount"},
 }
 
 

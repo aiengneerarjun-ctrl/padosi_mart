@@ -97,7 +97,9 @@ class OrderOut(BaseModel):
     can_cancel: bool  # customer abhi order cancel kar sakta hai
     seller_can_accept_after: datetime | None  # item hatne ke baad seller isse pehle accept nahi kar sakta (cancel ka mauka)
     amount_due: float  # COD me delivery par kitna dena hai (cancel/paid order me 0)
-    delivery_otp: str | None = None  # sirf OUT_FOR_DELIVERY me: delivery partner ko batane ka 4 ank ka OTP
+    delivery_otp: str | None = None  # sirf OUT_FOR_DELIVERY me: delivery partner ko batane ka4 ank ka OTP
+    refunded_total: float = 0.0  # ONLINE order me ab tak wapas kiya (ya wapas ho raha) paisa
+    payment_expires_at: datetime | None = None  # ONLINE order me isse pehle payment karna hai (warna order cancel)
     removed_items: list[RemovedItemOut]
     notice: str | None  # customer ki bhasha me ek line ka sandesh (kuch hata ho tab)
     note: str | None

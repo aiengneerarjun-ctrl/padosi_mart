@@ -29,7 +29,20 @@ class Settings(BaseSettings):
     private_media_dir: str = "/code/private_media"  # sirf local ke liye
     s3_private_bucket: str = "padosi-private"  # production me alag, private bucket (public access band)
 
+        # Online payment (Cashfree). cashfree_client_id, cashfree_client_secret aur payment_notify_url teeno bhare ho tabhi ONLINE payment chalu hota hai.
+    cashfree_client_id: str = ""
+    cashfree_client_secret: str = ""
+    cashfree_env: str = "sandbox"  # "sandbox" (test) ya "production" (asli paisa)
+    cashfree_api_version: str = "2026-01-01"
+    payment_notify_url: str = ""  # PUBLIC https URL: https://<aapka-domain>/api/v1/payments/cashfree/webhook
+    payment_return_url: str = ""  # payment ke baad customer jahan wapas aaye (app ka link / web page); khali bhi chalega
+    payment_window_minutes: int = 15  # itne minute me payment na hui to order cancel ho jaata hai (stock wapas)
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @property
+    def payments_enabled(self) -> bool:
+        return bool(self.cashfree_client_id and self.cashfree_client_secret and self.payment_notify_url)
 
     @property
     def database_url(self) -> str:

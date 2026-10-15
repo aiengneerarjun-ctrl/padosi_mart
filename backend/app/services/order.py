@@ -16,16 +16,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.errors import api_error
 from app.core.i18n import localized, translate, translate_fmt
-from app.models import Delivery, Order, OrderItem, OrderStatusHistory, Product, Seller, Store, StoreOrder, User
+from app.models import Delivery, Order, OrderItem, OrderStatusHistory, Product, Seller, Store, StoreOrder, User,Refund
 from app.models.cart import Cart, CartItem
 from app.models.catalog import StockReason
 from app.models.order import OrderStatus, PaymentMethod, PaymentStatus, StoreOrderStatus
 from app.schemas.order import (
     AddressSnapshotOut, OrderCreate, OrderItemOut, OrderOut, OrderSummary, RemovedItemOut, StatusHistoryOut, StoreOrderOut,
 )
+from app.services import cashfree
 from app.services import checkout as checkout_service
 from app.services import customer as customer_service
 from app.services import notification
+from app.services import payment as payment_service
 from app.services.delivery_assignment import cancel_live_delivery
 from app.services.delivery_rules import delivery_otp
 from app.services.inventory import adjust_stock
@@ -61,7 +63,7 @@ async def place_order(db: AsyncSession, user: User, body: OrderCreate, idempoten
     if existing is not None:
         return await _order_out(db, existing, lang), False
 
-    if body.payment_method != PaymentMethod.COD:
+    if body.payment_method != PaymentMethod.COD and not (body.payment_method == PaymentMethod.ONLINE and cashfree.enabled()):
         raise api_error(409, "PAYMENT_METHOD_NOT_AVAILABLE", "Ye payment tareeka abhi available nahi hai.")
 
     # Address, doori, delivery radius, dukaan OPEN, stock: sab preview wale hi rules se dobara check
@@ -219,6 +221,12 @@ async def _order_out(db: AsyncSession, order: Order, lang: str) -> OrderOut:
         live = await db.scalar(select(Delivery).where(Delivery.order_id == order.id, Delivery.status == "OUT_FOR_DELIVERY"))
         if live is not None:
             otp = delivery_otp(settings.jwt_secret, live.id)
+    refunded = Decimal(str(await db.scalar(select(func.coalesce(func.sum(Refund.amount), 0)).where(Refund.order_id == order.id, Refund.status != "FAILED"))))
+    pay_until = (
+        payment_service.pay_until(order)
+        if order.payment_method == PaymentMethod.ONLINE and order.status == OrderStatus.PLACED and order.payment_status == PaymentStatus.PENDING
+        else None
+    )
     return OrderOut(
         id=order.id, order_number=order.order_number, status=order.status, payment_method=order.payment_method,
         payment_status=order.payment_status,
@@ -231,6 +239,7 @@ async def _order_out(db: AsyncSession, order: Order, lang: str) -> OrderOut:
         removed_total=float(removed_total), delivery_fee_added=float(fee_added), can_cancel=can_cancel,
         seller_can_accept_after=max(waits) if waits else None, amount_due=float(order.total) if owes else 0.0,
        delivery_otp=otp, removed_items=removed_items, notice=notice,
+       refunded_total=float(refunded), payment_expires_at=pay_until,
         note=order.note, created_at=order.created_at, stores=stores,
         history=[
             StatusHistoryOut(
@@ -280,35 +289,55 @@ async def list_orders(db: AsyncSession, user: User, limit: int, offset: int) -> 
 # ---------------- Cancel ----------------
 
 
-async def cancel_order(db: AsyncSession, user: User, order_id: uuid.UUID, reason: str | None, lang: str) -> OrderOut:
-    """Customer tab tak cancel kar sakta hai jab tak koi bhi seller ne order accept nahi kiya."""
-    await _lock_user(db, user)
-    order = await _get_own(db, user, order_id, for_update=True)
-    if order.status == OrderStatus.CANCELLED:  # dobara cancel: error nahi, wahi haal
-        return await _order_out(db, order, lang)
-
+async def _cancel_core(db: AsyncSession, order: Order, actor: User | None, role: str, note: str | None) -> None:
+    """Order cancel: dukaan-hisse CANCELLED, stock wapas, partner free, ONLINE paid ho to refund ka record (COMMIT caller karta hai)."""
     # Seller ne jo hissa reject kiya ya jo item hataya, uska stock pehle hi wapas aa chuka hai: use dobara na chhedo
-        removed_ids = {r.order_item_id for r in order.removals}
+    removed_ids = {r.order_item_id for r in order.removals}
     live = [so for so in order.store_orders if so.status != StoreOrderStatus.REJECTED]
-    if not _can_cancel(order):
-        raise api_error(409, "ORDER_CANNOT_CANCEL", "Ab ye order cancel nahi ho sakta.")
-
-    note = (reason or "").strip() or None
     previous = order.status
     qty_by_product: dict[uuid.UUID, int] = {}
     for so in live:
-        db.add(_history(order.id, StoreOrderStatus.CANCELLED, user, "CUSTOMER", store_order_id=so.id, from_status=so.status, note=note))
+        db.add(_history(order.id, StoreOrderStatus.CANCELLED, actor, role, store_order_id=so.id, from_status=so.status, note=note))
         so.status = StoreOrderStatus.CANCELLED
         for i in so.items:
             if i.id not in removed_ids:
                 qty_by_product[i.product_id] = qty_by_product.get(i.product_id, 0) + i.quantity
 
     for pid in sorted(qty_by_product):  # stock wapas (ORDER_CANCEL)
-        await adjust_stock(db, pid, qty_by_product[pid], StockReason.ORDER_CANCEL, actor=user, note=f"order {order.order_no} cancel")
+        await adjust_stock(db, pid, qty_by_product[pid], StockReason.ORDER_CANCEL, actor=actor, note=f"order {order.order_no} cancel")
 
     order.status = OrderStatus.CANCELLED
     if order.payment_status == PaymentStatus.PENDING:
         order.payment_status = PaymentStatus.NOT_REQUIRED  # paisa liya hi nahi gaya tha
-    db.add(_history(order.id, OrderStatus.CANCELLED, user, "CUSTOMER", from_status=previous, note=note))
-    await cancel_live_delivery(db, order.id, "customer ne order cancel kiya")  # partner ko free karo
+    db.add(_history(order.id, OrderStatus.CANCELLED, actor, role, from_status=previous, note=note))
+    await cancel_live_delivery(db, order.id, "order cancel hua")  # partner ko free karo
+    if order.payment_method == PaymentMethod.ONLINE and order.payment_status == PaymentStatus.PAID:  # paid ONLINE: poora paisa wapas
+        await payment_service.request_refund(db, order, None, "ORDER_CANCELLED", note, actor.id if actor else None)
+
+
+async def cancel_order(db: AsyncSession, user: User, order_id: uuid.UUID, reason: str | None, lang: str) -> OrderOut:
+    """Customer tab tak cancel kar sakta hai jab tak koi bhi seller ne order accept nahi kiya. Paid ONLINE order me paisa wapas."""
+    await _lock_user(db, user)
+    order = await _get_own(db, user, order_id, for_update=True)
+    if order.status == OrderStatus.CANCELLED:  # dobara cancel: error nahi, wahi haal
+        return await _order_out(db, order, lang)
+    if not _can_cancel(order):
+        raise api_error(409, "ORDER_CANNOT_CANCEL", "Ab ye order cancel nahi ho sakta.")
+    await _cancel_core(db, order, user, "CUSTOMER", (reason or "").strip() or None)
     await db.commit()
+    await payment_service.process_pending_refunds(db, order_id=order.id)  # refund Cashfree ko (commit ke baad)
+    return await _order_out(db, order, lang)
+
+
+async def cancel_unpaid(db: AsyncSession, order_id: uuid.UUID) -> bool:
+    """Bina payment ke ONLINE order ka samay nikal gaya: system cancel karta hai (stock wapas). True = cancel hua."""
+    order = await db.scalar(select(Order).where(Order.id == order_id).with_for_update().execution_options(populate_existing=True))
+    if (
+        order is None or order.payment_method != PaymentMethod.ONLINE
+        or order.status != OrderStatus.PLACED or order.payment_status != PaymentStatus.PENDING
+    ):
+        await db.rollback()
+        return False
+    await _cancel_core(db, order, None, "SYSTEM", "payment samay par nahi hua")
+    await db.commit()
+    return True

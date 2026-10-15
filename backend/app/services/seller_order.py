@@ -25,10 +25,11 @@ from app.core.errors import api_error
 from app.core.i18n import localized, translate
 from app.models import Delivery, Order, OrderItem, OrderStatusHistory, Seller, StoreOrder, User
 from app.models.catalog import StockReason
-from app.models.order import OrderItemRemoval, OrderStatus, PaymentStatus, RemovalReason, StoreOrderStatus
+from app.models.order import OrderItemRemoval, OrderStatus,PaymentMethod, PaymentStatus, RemovalReason, StoreOrderStatus
 from app.models.seller import SellerStatus
 from app.schemas.seller_order import SellerOrderItem, SellerOrderOut, UnavailableItem
 from app.services import notification
+from app.services import payment as payment_service
 from app.services.checkout import delivery_fee_for
 from app.services.delivery_assignment import cancel_live_delivery
 from app.services.inventory import adjust_stock
@@ -104,7 +105,7 @@ async def list_orders(db: AsyncSession, seller: Seller, status: str | None, limi
     q = (
         select(StoreOrder, Order)
         .join(Order, Order.id == StoreOrder.order_id)
-        .where(StoreOrder.seller_id == seller.id)
+       .where(StoreOrder.seller_id == seller.id, Order.status != OrderStatus.PLACED)  # PLACED = ONLINE payment abhi nahi hua
         .order_by(StoreOrder.created_at.desc(), StoreOrder.id)
         .limit(limit)
         .offset(offset)
@@ -118,7 +119,7 @@ async def get_order(db: AsyncSession, seller: Seller, store_order_id: uuid.UUID,
     row = (
         await db.execute(
             select(StoreOrder, Order).join(Order, Order.id == StoreOrder.order_id)
-            .where(StoreOrder.id == store_order_id, StoreOrder.seller_id == seller.id)
+            .where(StoreOrder.id == store_order_id, StoreOrder.seller_id == seller.id, Order.status != OrderStatus.PLACED)
         )
     ).first()
     if row is None:  # doosre seller ka bhi 404
@@ -137,6 +138,8 @@ async def _lock(db: AsyncSession, seller: Seller, store_order_id: uuid.UUID) -> 
     if order_id is None:
         raise api_error(404, "ORDER_NOT_FOUND", "Order nahi mila.")
     order = await db.scalar(select(Order).where(Order.id == order_id).with_for_update().execution_options(populate_existing=True))
+    if order.status == OrderStatus.PLACED:  # ONLINE payment abhi nahi hua: seller ko ye order dikhta hi nahi
+        raise api_error(404, "ORDER_NOT_FOUND", "Order nahi mila.")
     so = next(s for s in order.store_orders if s.id == store_order_id)
     return order, so
 
@@ -246,6 +249,8 @@ async def _remove_items(
         if order.payment_status == PaymentStatus.PENDING:
             order.payment_status = PaymentStatus.NOT_REQUIRED
         await cancel_live_delivery(db, order.id, "saari dukaanein reject / items nahi")  # partner ko free karo
+        if order.payment_method == PaymentMethod.ONLINE and order.payment_status == PaymentStatus.PAID:  # paid ONLINE: poora paisa wapas
+            await payment_service.request_refund(db, order, None, "ITEMS_REMOVED", "saare items available nahi", user.id)
     else:
         old_total, old_fee = order.total, order.delivery_fee
         order.items_subtotal = sum((s.items_subtotal for s in live), Decimal("0"))
@@ -253,6 +258,8 @@ async def _remove_items(
         order.total = order.items_subtotal + order.delivery_fee
         fee_note = f", delivery {old_fee} -> {order.delivery_fee}" if order.delivery_fee != old_fee else ""
         db.add(_history(order.id, order.status, from_status=order.status, actor=None, role="SYSTEM", note=f"{so.store_name}: total {old_total} -> {order.total}{fee_note}"))
+        if order.payment_method == PaymentMethod.ONLINE and order.payment_status == PaymentStatus.PAID and old_total > order.total:
+            await payment_service.request_refund(db, order, old_total - order.total, "ITEMS_REMOVED", f"{so.store_name}: {len(new)} item hataye", user.id)
         await _apply_rollup(db, order)
         notification.add(  # customer ko: kya hata, naya total dekho, cancel kar sakte ho
             db, order.user_id, "ORDER_ITEMS_REMOVED",
@@ -289,6 +296,7 @@ async def mark_unavailable(
         raise api_error(409, "INVALID_STATE", "Abhi ki halat me ye kaam nahi ho sakta.")
     await _remove_items(db, order, so, user, picks)
     await db.commit()
+    await payment_service.process_pending_refunds(db, order_id=order.id)  # paid ONLINE order me hataye hisse ka refund
     order, so = await _reload(db, order.id, so.id)
     return _out(so, order, lang)
 
@@ -306,5 +314,6 @@ async def reject(
     note = reason.strip()
     await _remove_items(db, order, so, user, {i.id: (reason_code, note, 0) for i in so.items})
     await db.commit()
+    await payment_service.process_pending_refunds(db, order_id=order.id)  # paid ONLINE order me refund
     order, so = await _reload(db, order.id, so.id)
     return _out(so, order, lang)

@@ -8,7 +8,9 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models import User
 from app.schemas.order import OrderCancel, OrderCreate, OrderOut, OrderSummary
+from app.schemas.payment import PaymentSessionOut
 from app.services import order as order_service
+from app.services import payment as payment_service
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -46,3 +48,8 @@ async def cancel_order(
 ):
     """Jab tak koi seller order accept na kare, customer cancel kar sakta hai. Stock wapas aa jaata hai."""
     return await order_service.cancel_order(db, user, order_id, body.reason if body else None, request.state.lang)
+@router.post("/{order_id}/pay", response_model=PaymentSessionOut)
+async def pay_order(order_id: uuid.UUID, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """ONLINE order ka payment shuru karo: Cashfree ka payment_session_id milta hai (app ka SDK isse payment kholta hai).
+    Wahi order dobara bulane par wahi session milta hai. Payment ka samay (payment_expires_at) nikal gaya to 409 PAYMENT_EXPIRED."""
+    return await payment_service.start_payment(db, user, order_id)
