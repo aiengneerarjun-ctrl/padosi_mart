@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -20,4 +20,19 @@ class Notification(Base):
     params: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("orders.id"))
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pushed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # khali = push abhi bheji nahi gayi
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class DeviceToken(Base):
+    """Ek user ke ek phone ka FCM token. Ek token ek hi user ke naam rehta hai (phone par doosra user login kare to token usi ka ho jata hai)."""
+
+    __tablename__ = "device_tokens"
+    __table_args__ = (CheckConstraint("platform IN ('android','ios','web')", name="ck_device_tokens_platform"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    token: Mapped[str] = mapped_column(Text, unique=True)
+    platform: Mapped[str] = mapped_column(String(10))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

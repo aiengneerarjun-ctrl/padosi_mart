@@ -12,6 +12,7 @@ class OrderCreate(BaseModel):
     # Customer ne preview me jo total dekha tha. Beech me price badli to order nahi banta (PRICE_CHANGED).
     expected_total: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
     note: str | None = Field(default=None, max_length=300)
+    coupon_code: str | None = Field(default=None, max_length=20)  # preview me jo coupon laga tha wahi bhejo
 
 
 class OrderCancel(BaseModel):
@@ -89,11 +90,14 @@ class OrderOut(BaseModel):
     items_subtotal: float  # abhi ka (hataye gaye items ke baad)
     delivery_fee: float
     total: float  # abhi ka naya total
-    # Hisaab: original_total - removed_total = total (delivery charge waisa hi)
+    # Hisaab: original_total - removed_total + delivery_fee_added + discount_lost = total
     original_items_subtotal: float
     original_total: float
     removed_total: float
     delivery_fee_added: float  # items hatne se total 799 se neeche gaya to jo delivery charge naya laga (warna 0)
+    coupon_code: str | None = None  # order par laga coupon
+    discount_amount: float = 0.0  # abhi ka coupon discount (total me se ghata hua)
+    discount_lost: float = 0.0  # items hatne se coupon ka jitna discount chala gaya (warna 0)
     can_cancel: bool  # customer abhi order cancel kar sakta hai
     seller_can_accept_after: datetime | None  # item hatne ke baad seller isse pehle accept nahi kar sakta (cancel ka mauka)
     amount_due: float  # COD me delivery par kitna dena hai (cancel/paid order me 0)

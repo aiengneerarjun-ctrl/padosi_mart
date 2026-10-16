@@ -77,7 +77,10 @@ class Order(Base):
         CheckConstraint(f"status IN ({_in(OrderStatus)})", name="ck_orders_status"),
         CheckConstraint(f"payment_method IN ({_in(PaymentMethod)})", name="ck_orders_payment_method"),
         CheckConstraint(f"payment_status IN ({_in(PaymentStatus)})", name="ck_orders_payment_status"),
-        CheckConstraint("items_subtotal >= 0 AND delivery_fee >= 0 AND total = items_subtotal + delivery_fee", name="ck_orders_money"),
+        CheckConstraint(
+            "items_subtotal >= 0 AND delivery_fee >= 0 AND discount_amount >= 0 AND total = items_subtotal + delivery_fee - discount_amount",
+            name="ck_orders_money",
+        ),
         Index("ix_orders_user_created", "user_id", "created_at"),
     )
 
@@ -102,6 +105,11 @@ class Order(Base):
     # Order jis haal me bana tha. Seller ne kuch items hataye to items_subtotal/total ghatte hain, ye dono nahi badalte.
     original_items_subtotal: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     original_total: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    # Coupon: discount_amount seller ke items hatne par ghat sakta hai (badhta nahi). original_discount order bante waqt ka.
+    coupon_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("coupons.id"))
+    coupon_code: Mapped[str | None] = mapped_column(String(20))
+    discount_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"), server_default="0")
+    original_discount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"), server_default="0")
     note: Mapped[str | None] = mapped_column(String(300))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -124,6 +132,7 @@ class StoreOrder(Base):
         UniqueConstraint("order_id", "store_id", name="uq_store_orders_order_store"),
         CheckConstraint(f"status IN ({_in(StoreOrderStatus)})", name="ck_store_orders_status"),
         CheckConstraint("items_subtotal >= 0", name="ck_store_orders_subtotal"),
+        CheckConstraint("seller_discount >= 0 AND seller_discount <= items_subtotal", name="ck_store_orders_seller_discount"),
         CheckConstraint(
             "(commission_rate IS NULL AND commission_amount IS NULL) OR "
             "(commission_rate BETWEEN 0 AND 100 AND commission_amount >= 0 AND commission_amount <= items_subtotal)",
@@ -141,7 +150,9 @@ class StoreOrder(Base):
     store_address: Mapped[str] = mapped_column(String(300))
     store_latitude: Mapped[Decimal] = mapped_column(Numeric(9, 6))
     store_longitude: Mapped[Decimal] = mapped_column(Numeric(9, 6))
-    items_subtotal: Mapped[Decimal] = mapped_column(Numeric(10, 2))  # is dukaan ke saaman ka totalcommission_rate: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))  # percent; delivery poori hone par fix (None = abhi nahi)
+    items_subtotal: Mapped[Decimal] = mapped_column(Numeric(10, 2))  # is dukaan ke saaman ka total
+    seller_discount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"), server_default="0")  # seller-funded coupon me seller ka hissa (payout se kat'ta hai)
+    commission_rate: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))  # percent; delivery poori hone par fix (None = abhi nahi)
     commission_amount: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))  # platform ka hissa; seller ko milega items_subtotal - ye
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

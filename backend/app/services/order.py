@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.errors import api_error
 from app.core.i18n import localized, translate, translate_fmt
-from app.models import Delivery, Order, OrderItem, OrderStatusHistory, Product, Seller, Store, StoreOrder, User,Refund
+from app.models import CouponRedemption, Delivery, Order, OrderItem, OrderStatusHistory, Product, Seller, Store, StoreOrder, User,Refund
 from app.models.cart import Cart, CartItem
 from app.models.catalog import StockReason
 from app.models.order import OrderStatus, PaymentMethod, PaymentStatus, StoreOrderStatus
@@ -25,6 +25,7 @@ from app.schemas.order import (
 )
 from app.services import cashfree
 from app.services import checkout as checkout_service
+from app.services import coupon as coupon_service
 from app.services import customer as customer_service
 from app.services import notification
 from app.services import payment as payment_service
@@ -87,7 +88,17 @@ async def place_order(db: AsyncSession, user: User, body: OrderCreate, idempoten
 
     items_subtotal = sum((p.selling_price * q for lines in by_store.values() for p, q in lines), Decimal("0")).quantize(CENT)
     fee = checkout_service.delivery_fee_for(items_subtotal)
-    total = (items_subtotal + fee).quantize(CENT)
+    quote = None
+    if body.coupon_code and body.coupon_code.strip():  # coupon: kuch bhi galat ho to order nahi banta (customer ko pata chale)
+        parts = [
+            coupon_service.Part(sid, stores[sid].seller_id, sum((p.selling_price * q for p, q in lines), Decimal("0")).quantize(CENT))
+            for sid, lines in by_store.items()
+        ]
+        quote, coupon_error = await coupon_service.evaluate(db, user, body.coupon_code, parts, items_subtotal, fee, lock=True)
+        if coupon_error:
+            raise api_error(409, coupon_error, "Ye coupon lag nahi sakta.")
+    discount = quote.discount if quote else Decimal("0")
+    total = (items_subtotal + fee - discount).quantize(CENT)
     if body.expected_total.quantize(CENT) != total:
         raise api_error(409, "PRICE_CHANGED", "Total badal gaya hai. Cart dobara dekhkar order karein.")
 
@@ -98,10 +109,14 @@ async def place_order(db: AsyncSession, user: User, body: OrderCreate, idempoten
         landmark=address.landmark, latitude=address.latitude, longitude=address.longitude,
         items_subtotal=items_subtotal, delivery_fee=fee, total=total, note=(body.note or "").strip() or None,
         original_items_subtotal=items_subtotal, original_total=total,
+        coupon_id=quote.coupon.id if quote else None, coupon_code=quote.coupon.code if quote else None,
+        discount_amount=discount, original_discount=discount,
     )
     db.add(order)
     await db.flush()
     db.add(_history(order.id, OrderStatus.PLACED, user, "CUSTOMER"))
+    if quote:  # coupon ki ginti (order cancel hone par wapas hoti hai)
+        db.add(CouponRedemption(coupon_id=quote.coupon.id, user_id=user.id, order_id=order.id, discount_amount=discount))
 
     # Dukaan ke hisaab se StoreOrder + lines
     for store_id, lines in by_store.items():
@@ -110,6 +125,7 @@ async def place_order(db: AsyncSession, user: User, body: OrderCreate, idempoten
             order_id=order.id, store_id=store.id, seller_id=store.seller_id, status=StoreOrderStatus.PLACED,
             store_name=store.name, store_address=store.address, store_latitude=store.latitude, store_longitude=store.longitude,
             items_subtotal=sum((p.selling_price * q for p, q in lines), Decimal("0")).quantize(CENT),
+            seller_discount=quote.shares.get(store.id, Decimal("0")) if quote else Decimal("0"),
         )
         db.add(so)
         await db.flush()
@@ -197,7 +213,9 @@ async def _order_out(db: AsyncSession, order: Order, lang: str) -> OrderOut:
     removed_total = sum((r.line_total for r in order.removals), Decimal("0"))
     all_removed = bool(removal_of) and all(i.id in removal_of for so in order.store_orders for i in so.items)
     can_cancel = _can_cancel(order)
-    fee_added = max(Decimal("0"), order.delivery_fee - (order.original_total - order.original_items_subtotal))
+    original_fee = order.original_total - order.original_items_subtotal + order.original_discount
+    fee_added = max(Decimal("0"), order.delivery_fee - original_fee)
+    discount_lost = order.original_discount - order.discount_amount  # coupon ka jitna discount items hatne se chala gaya
     notice = None
     if all_removed:
         notice = translate("ORDER_NOTICE_ALL_REMOVED", lang)
@@ -211,6 +229,8 @@ async def _order_out(db: AsyncSession, order: Order, lang: str) -> OrderOut:
             notice = translate_fmt("ORDER_NOTICE_ITEMS_REMOVED", lang, count=len(removal_of), total=f"{order.total:.2f}")
         if can_cancel:  # customer ko saaf batao ki wo cancel kar sakta hai
             notice += " " + translate("ORDER_NOTICE_CAN_CANCEL", lang)
+    if notice and discount_lost > 0 and order.status != OrderStatus.CANCELLED:
+        notice += " " + translate_fmt("ORDER_NOTICE_COUPON_LOST", lang, coupon=order.coupon_code or "", amount=f"{discount_lost:.2f}")
     waits = [
         max(r.created_at for r in order.removals if r.store_order_id == so.id) + timedelta(seconds=ACCEPT_WAIT_SECONDS)
         for so in order.store_orders if so.status == StoreOrderStatus.PLACED and any(r.store_order_id == so.id for r in order.removals)
@@ -235,6 +255,7 @@ async def _order_out(db: AsyncSession, order: Order, lang: str) -> OrderOut:
             landmark=order.landmark, latitude=float(order.latitude), longitude=float(order.longitude),
         ),
         items_subtotal=float(order.items_subtotal), delivery_fee=float(order.delivery_fee), total=float(order.total),
+        coupon_code=order.coupon_code, discount_amount=float(order.discount_amount), discount_lost=float(discount_lost),
         original_items_subtotal=float(order.original_items_subtotal), original_total=float(order.original_total),
         removed_total=float(removed_total), delivery_fee_added=float(fee_added), can_cancel=can_cancel,
         seller_can_accept_after=max(waits) if waits else None, amount_due=float(order.total) if owes else 0.0,
@@ -310,6 +331,7 @@ async def _cancel_core(db: AsyncSession, order: Order, actor: User | None, role:
     if order.payment_status == PaymentStatus.PENDING:
         order.payment_status = PaymentStatus.NOT_REQUIRED  # paisa liya hi nahi gaya tha
     db.add(_history(order.id, OrderStatus.CANCELLED, actor, role, from_status=previous, note=note))
+    await coupon_service.release(db, order.id)  # coupon wapas (customer dobara use kar sakta hai)
     await cancel_live_delivery(db, order.id, "order cancel hua")  # partner ko free karo
     if order.payment_method == PaymentMethod.ONLINE and order.payment_status == PaymentStatus.PAID:  # paid ONLINE: poora paisa wapas
         await payment_service.request_refund(db, order, None, "ORDER_CANCELLED", note, actor.id if actor else None)

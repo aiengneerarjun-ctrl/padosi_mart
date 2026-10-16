@@ -11,3 +11,5 @@ PyJWT==2.15.1
 python-multipart==0.0.32
 pillow==12.3.0
 boto3==1.43.110
+google-auth==2.40.3
+requests==2.32.4

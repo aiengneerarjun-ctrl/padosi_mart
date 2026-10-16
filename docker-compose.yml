@@ -40,6 +40,19 @@ services:
     # Pehle migrations (tables ban jaate hain), phir server
     command: ["sh", "-c", "python -m alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
 
+  # Phone par push bhejne wala chhota worker (Firebase FCM). Key file na ho to chup-chap ruka rehta hai.
+  pusher:
+    build: ./backend
+    env_file: .env
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend/app:/code/app
+      - ./secrets:/run/secrets:ro
+    command: ["python", "-m", "app.jobs.send_push", "--loop"]
+
 volumes:
   pgdata:
   mediadata:

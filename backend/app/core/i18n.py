@@ -290,6 +290,86 @@ MESSAGES: dict[str, dict[str, str]] = {
         "hi": "आपके ऑर्डर की {count} चीज़ें उपलब्ध नहीं हैं, इसलिए हटा दी गई हैं। अब आपका ऑर्डर ₹{free_from} से कम है, इसलिए ₹{fee} डिलीवरी चार्ज लगा है। आपका नया कुल ₹{total} है।",
         "bho": "रउरा ऑर्डर के {count} सामान उपलब्ध नइखे, एहसे हटा दिहल गइल। अब रउरा ऑर्डर ₹{free_from} से कम बा, एहसे ₹{fee} डिलीवरी चार्ज लागल बा। रउरा नया कुल ₹{total} बा।",
     },
+    "ORDER_NOTICE_COUPON_LOST": {
+        "en": "Because of this, coupon {coupon} now gives ₹{amount} less discount.",
+        "hi": "इस वजह से कूपन {coupon} पर ₹{amount} कम छूट मिलेगी।",
+        "bho": "एहि से कूपन {coupon} पर ₹{amount} कम छूट मिली।",
+    },
+    "COUPON_NOT_FOUND": {
+        "en": "This coupon code is not valid.",
+        "hi": "यह कूपन कोड सही नहीं है।",
+        "bho": "ई कूपन कोड सही नइखे।",
+    },
+    "COUPON_INACTIVE": {
+        "en": "This coupon is not active.",
+        "hi": "यह कूपन अभी चालू नहीं है।",
+        "bho": "ई कूपन अभी चालू नइखे।",
+    },
+    "COUPON_NOT_STARTED": {
+        "en": "This coupon has not started yet.",
+        "hi": "यह कूपन अभी शुरू नहीं हुआ है।",
+        "bho": "ई कूपन अभी शुरू नइखे भइल।",
+    },
+    "COUPON_EXPIRED": {
+        "en": "This coupon has expired.",
+        "hi": "यह कूपन खत्म हो चुका है।",
+        "bho": "ई कूपन खतम हो गइल बा।",
+    },
+    "COUPON_MIN_ORDER": {
+        "en": "Your order is below the minimum amount for this coupon.",
+        "hi": "आपका ऑर्डर इस कूपन की न्यूनतम राशि से कम है।",
+        "bho": "रउरा ऑर्डर एह कूपन के न्यूनतम रकम से कम बा।",
+    },
+    "COUPON_NOT_APPLICABLE": {
+        "en": "This coupon does not apply to the items in your cart.",
+        "hi": "यह कूपन आपके कार्ट के सामान पर लागू नहीं होता।",
+        "bho": "ई कूपन रउरा कार्ट के सामान पर लागू ना होला।",
+    },
+    "COUPON_FIRST_ORDER_ONLY": {
+        "en": "This coupon is only for your first order.",
+        "hi": "यह कूपन सिर्फ़ आपके पहले ऑर्डर के लिए है।",
+        "bho": "ई कूपन खाली रउरा पहिला ऑर्डर खातिर बा।",
+    },
+    "COUPON_USER_LIMIT": {
+        "en": "You have already used this coupon.",
+        "hi": "आप यह कूपन पहले इस्तेमाल कर चुके हैं।",
+        "bho": "रउरा ई कूपन पहिले इस्तेमाल कर चुकल बानी।",
+    },
+    "COUPON_LIMIT_REACHED": {
+        "en": "This coupon has been fully used.",
+        "hi": "यह कूपन पूरा इस्तेमाल हो चुका है।",
+        "bho": "ई कूपन पूरा इस्तेमाल हो गइल बा।",
+    },
+    "COUPON_NO_DISCOUNT": {
+        "en": "This coupon gives no discount on your order.",
+        "hi": "इस कूपन से आपके ऑर्डर पर कोई छूट नहीं मिलेगी।",
+        "bho": "एह कूपन से रउरा ऑर्डर पर कवनो छूट ना मिली।",
+    },
+    "COUPON_CODE_EXISTS": {
+        "en": "This coupon code already exists.",
+        "hi": "यह कूपन कोड पहले से मौजूद है।",
+        "bho": "ई कूपन कोड पहिले से बा।",
+    },
+    "COUPON_DATES_INVALID": {
+        "en": "The coupon end time must be after its start time.",
+        "hi": "कूपन के खत्म होने का समय शुरू होने के बाद का होना चाहिए।",
+        "bho": "कूपन खतम होखे के समय शुरू होखे के बाद के होखे के चाहीं।",
+    },
+    "COUPON_LIMIT_TOO_LOW": {
+        "en": "The limit cannot be lower than the number of times it has been used.",
+        "hi": "लिमिट अब तक के इस्तेमाल से कम नहीं हो सकती।",
+        "bho": "लिमिट अबले के इस्तेमाल से कम ना हो सकेला।",
+    },
+    "COUPON_ADMIN_PLATFORM_ONLY": {
+        "en": "A coupon created by the admin is paid for by Padosi.",
+        "hi": "एडमिन का बनाया कूपन पड़ोसी के खर्च पर होता है।",
+        "bho": "एडमिन के बनावल कूपन पड़ोसी के खरचा पर होला।",
+    },
+    "COUPON_SELLER_LIMIT": {
+        "en": "You cannot have this many coupons running at the same time.",
+        "hi": "इतने कूपन एक साथ चालू नहीं रह सकते।",
+        "bho": "एतना कूपन एके साथ चालू ना रह सकेला।",
+    },
     "ORDER_NOTICE_CAN_CANCEL": {
         "en": "If you do not want the rest of the order, you can cancel it now.",
         "hi": "अगर आप बाकी ऑर्डर नहीं चाहते, तो अभी रद्द कर सकते हैं।",
@@ -665,3 +745,9 @@ def localized(obj, lang: str, base: str = "name") -> str:
 def translate_fmt(code: str, lang: str, **params) -> str:
     """Jin messages me {count}, {total} jaise khali jagah hain unke liye."""
     return translate(code, lang).format(**params)
+
+
+# Naye features ke messages alag file me hain (core/i18n_extra.py); yahin MESSAGES me mila dete hain.
+from app.core.i18n_extra import EXTRA  # noqa: E402
+
+MESSAGES.update(EXTRA)

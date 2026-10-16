@@ -12,7 +12,8 @@ class SettlementOrderOut(BaseModel):
     items_subtotal: float  # hataye gaye items ke baad ki bikri
     commission_rate: float  # percent, us waqt ka
     commission_amount: float
-    net: float  # seller ko milega = items_subtotal - commission_amount
+    seller_discount: float = 0.0  # seller-funded coupon me seller ka hissa
+    net: float  # seller ko milega = items_subtotal - commission_amount - seller_discount
     delivered_at: datetime
 
 
@@ -26,7 +27,8 @@ class SellerPayoutOut(BaseModel):
 class SettlementSummaryOut(BaseModel):
     total_sales: float  # deliver hue orders ki kul bikri (hataye gaye items ke baad)
     total_commission: float
-    total_earned: float  # = bikri - commission
+    total_seller_discount: float = 0.0  # seller-funded coupons me seller ka kul hissa
+    total_earned: float  # = bikri - commission - seller_discount
     total_paid: float  # admin se mila hua kul paisa (sudhaar ke baad)
     due: float  # abhi admin se milna baaki = earned - paid
     recent_orders: list[SettlementOrderOut]
@@ -40,6 +42,7 @@ class AdminSettlementRowOut(BaseModel):
     status: str
     total_sales: float
     total_commission: float
+    total_seller_discount: float = 0.0
     total_earned: float
     total_paid: float
     due: float

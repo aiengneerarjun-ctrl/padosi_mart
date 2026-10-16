@@ -78,21 +78,24 @@ async def set_rates(
     return await get_rates(db)
 
 
-async def _totals(db: AsyncSession, seller_id: uuid.UUID) -> tuple[Decimal, Decimal, Decimal]:
-    """(kul bikri, kul commission, kul paid)"""
+async def _totals(db: AsyncSession, seller_id: uuid.UUID) -> tuple[Decimal, Decimal, Decimal, Decimal]:
+    """(kul bikri, kul commission, kul paid, seller-funded coupon me seller ka kul hissa)"""
     row = (
         await db.execute(
-            select(func.coalesce(func.sum(StoreOrder.items_subtotal), 0), func.coalesce(func.sum(StoreOrder.commission_amount), 0))
+            select(
+                func.coalesce(func.sum(StoreOrder.items_subtotal), 0), func.coalesce(func.sum(StoreOrder.commission_amount), 0),
+                func.coalesce(func.sum(StoreOrder.seller_discount), 0),
+            )
             .where(StoreOrder.seller_id == seller_id, StoreOrder.commission_amount.is_not(None))
         )
     ).one()
     paid = await db.scalar(select(func.coalesce(func.sum(SellerPayout.amount), 0)).where(SellerPayout.seller_id == seller_id))
-    return Decimal(str(row[0])), Decimal(str(row[1])), Decimal(str(paid))
+    return Decimal(str(row[0])), Decimal(str(row[1])), Decimal(str(paid)), Decimal(str(row[2]))
 
 
 async def summary(db: AsyncSession, seller_id: uuid.UUID) -> SettlementSummaryOut:
-    sales, commission, paid = await _totals(db, seller_id)
-    earned = sales - commission
+    sales, commission, paid, seller_discount = await _totals(db, seller_id)
+    earned = sales - commission - seller_discount
     rows = (
         await db.execute(
             select(StoreOrder, Order.order_no, Delivery.delivered_at)
@@ -107,12 +110,14 @@ async def summary(db: AsyncSession, seller_id: uuid.UUID) -> SettlementSummaryOu
         await db.scalars(select(SellerPayout).where(SellerPayout.seller_id == seller_id).order_by(SellerPayout.created_at.desc(), SellerPayout.id).limit(RECENT))
     ).all()
     return SettlementSummaryOut(
-        total_sales=float(sales), total_commission=float(commission), total_earned=float(earned), total_paid=float(paid), due=float(earned - paid),
+        total_sales=float(sales), total_commission=float(commission), total_seller_discount=float(seller_discount),
+        total_earned=float(earned), total_paid=float(paid), due=float(earned - paid),
         recent_orders=[
             SettlementOrderOut(
                 order_id=so.order_id, order_number=f"PD{order_no}", store_name=so.store_name, items_subtotal=float(so.items_subtotal),
                 commission_rate=float(so.commission_rate), commission_amount=float(so.commission_amount),
-                net=float(so.items_subtotal - so.commission_amount), delivered_at=delivered_at,
+                seller_discount=float(so.seller_discount), net=float(so.items_subtotal - so.commission_amount - so.seller_discount),
+                delivered_at=delivered_at,
             )
             for so, order_no, delivered_at in rows
         ],
@@ -131,6 +136,7 @@ async def admin_list(db: AsyncSession, include_settled: bool, limit: int, offset
             StoreOrder.seller_id.label("sid"),
             func.sum(StoreOrder.items_subtotal).label("sales"),
             func.sum(StoreOrder.commission_amount).label("comm"),
+            func.sum(StoreOrder.seller_discount).label("disc"),
         )
         .where(StoreOrder.commission_amount.is_not(None))
         .group_by(StoreOrder.seller_id)
@@ -138,9 +144,9 @@ async def admin_list(db: AsyncSession, include_settled: bool, limit: int, offset
     )
     pay = select(SellerPayout.seller_id.label("sid"), func.sum(SellerPayout.amount).label("p")).group_by(SellerPayout.seller_id).subquery()
     paid = func.coalesce(pay.c.p, 0)
-    earned = sold.c.sales - sold.c.comm
+    earned = sold.c.sales - sold.c.comm - sold.c.disc
     q = (
-        select(Seller, User.phone, sold.c.sales, sold.c.comm, paid)
+        select(Seller, User.phone, sold.c.sales, sold.c.comm, paid, sold.c.disc)
         .join(User, User.id == Seller.user_id)
         .join(sold, sold.c.sid == Seller.id)
         .outerjoin(pay, pay.c.sid == Seller.id)
@@ -151,12 +157,13 @@ async def admin_list(db: AsyncSession, include_settled: bool, limit: int, offset
     if not include_settled:
         q = q.where(earned - paid > 0)
     out = []
-    for s, phone, sales, comm, pd in (await db.execute(q)).all():
-        sales, comm, pd = Decimal(str(sales)), Decimal(str(comm)), Decimal(str(pd))
+    for s, phone, sales, comm, pd, disc in (await db.execute(q)).all():
+        sales, comm, pd, disc = Decimal(str(sales)), Decimal(str(comm)), Decimal(str(pd)), Decimal(str(disc))
         out.append(
             AdminSettlementRowOut(
                 seller_id=s.id, business_name=s.business_name, phone=phone, status=s.status, total_sales=float(sales),
-                total_commission=float(comm), total_earned=float(sales - comm), total_paid=float(pd), due=float(sales - comm - pd),
+                total_commission=float(comm), total_seller_discount=float(disc), total_earned=float(sales - comm - disc),
+                total_paid=float(pd), due=float(sales - comm - disc - pd),
             )
         )
     return out
@@ -174,8 +181,8 @@ async def record_payout(
     seller = await db.scalar(select(Seller).where(Seller.id == seller_id).with_for_update().execution_options(populate_existing=True))
     if seller is None:
         raise api_error(404, "SELLER_NOT_FOUND", "Seller nahi mila.")
-    sales, commission, paid = await _totals(db, seller_id)
-    earned = sales - commission
+    sales, commission, paid, seller_discount = await _totals(db, seller_id)
+    earned = sales - commission - seller_discount
     problem = deposit_problem(earned, paid, amount)  # wahi niyam: paid kamai se zyada nahi, sudhaar paid se zyada nahi
     if problem == "EXCEEDS":
         raise api_error(409, "SETTLEMENT_EXCEEDS_DUE", "Itna paisa seller ka baaki nahi hai.")

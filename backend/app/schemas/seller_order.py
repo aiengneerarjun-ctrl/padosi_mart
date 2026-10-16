@@ -32,6 +32,7 @@ class SellerOrderOut(BaseModel):
     status: str
     payment_method: str  # COD / ONLINE
     items_subtotal: float  # is dukaan ka total, hataye gaye items ke baad (commission kaatne se pehle)
+    seller_discount: float = 0.0  # seller-funded coupon me tumhara hissa: ye tumhare payout se kat'ta hai
     items: list[SellerOrderItem]
     created_at: datetime
     updated_at: datetime

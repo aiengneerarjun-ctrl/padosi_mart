@@ -28,6 +28,7 @@ from app.models.catalog import StockReason
 from app.models.order import OrderItemRemoval, OrderStatus,PaymentMethod, PaymentStatus, RemovalReason, StoreOrderStatus
 from app.models.seller import SellerStatus
 from app.schemas.seller_order import SellerOrderItem, SellerOrderOut, UnavailableItem
+from app.services import coupon as coupon_service
 from app.services import notification
 from app.services import payment as payment_service
 from app.services.checkout import delivery_fee_for
@@ -84,6 +85,7 @@ def _out(so: StoreOrder, order: Order, lang: str) -> SellerOrderOut:
     return SellerOrderOut(
         id=so.id, order_id=order.id, order_number=order.order_number, store_id=so.store_id, store_name=so.store_name,
         status=so.status, payment_method=order.payment_method, items_subtotal=float(so.items_subtotal),
+        seller_discount=float(so.seller_discount),
         items=[
             SellerOrderItem(
                 id=i.id, product_id=i.product_id, name=localized(i, lang), selling_unit=i.selling_unit, quantity=i.quantity,
@@ -244,6 +246,8 @@ async def _remove_items(
     # Poore order ka naya hisaab
     live = [s for s in order.store_orders if s.status not in INACTIVE]
     if not live:  # koi dukaan nahi bachi
+        await coupon_service.reprice(db, order)  # seller ke hisse 0 (sabse pehle: rejected hisse ka subtotal 0 ho chuka hai)
+        await coupon_service.release(db, order.id)  # coupon wapas
         db.add(_history(order.id, OrderStatus.CANCELLED, from_status=order.status, actor=None, role="SYSTEM", note="saare items available nahi"))
         order.status = OrderStatus.CANCELLED
         if order.payment_status == PaymentStatus.PENDING:
@@ -255,12 +259,12 @@ async def _remove_items(
         old_total, old_fee = order.total, order.delivery_fee
         order.items_subtotal = sum((s.items_subtotal for s in live), Decimal("0"))
         order.delivery_fee = max(old_fee, delivery_fee_for(order.items_subtotal))  # 799 se neeche aaye to charge lagega
-        order.total = order.items_subtotal + order.delivery_fee
+        await coupon_service.reprice(db, order)  # coupon ka discount + seller ke hisse dobara; order.total bhi yahin set hota hai
         fee_note = f", delivery {old_fee} -> {order.delivery_fee}" if order.delivery_fee != old_fee else ""
         db.add(_history(order.id, order.status, from_status=order.status, actor=None, role="SYSTEM", note=f"{so.store_name}: total {old_total} -> {order.total}{fee_note}"))
         if order.payment_method == PaymentMethod.ONLINE and order.payment_status == PaymentStatus.PAID and old_total > order.total:
             await payment_service.request_refund(db, order, old_total - order.total, "ITEMS_REMOVED", f"{so.store_name}: {len(new)} item hataye", user.id)
-        await _apply_rollup(db, order)
+        _apply_rollup(db, order)
         notification.add(  # customer ko: kya hata, naya total dekho, cancel kar sakte ho
             db, order.user_id, "ORDER_ITEMS_REMOVED",
             {"order_no": order.order_number, "store_name": so.store_name, "count": len(new), "minutes": ACCEPT_WAIT_SECONDS // 60}, order.id,

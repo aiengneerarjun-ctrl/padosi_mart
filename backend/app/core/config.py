@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     refresh_token_days: int = 30
     otp_ttl_seconds: int = 300
     sms_provider: str = "console"
+    # Push (Firebase FCM). Firebase console se mili service-account JSON ka path. Khali = push band (inbox phir bhi chalta hai).
+    fcm_service_account_file: str = ""
     # Product photos ka storage. dev: "local" (backend ke volume me), production: "s3" (koi bhi S3-compatible)
     storage_backend: str = "local"  # "local" ya "s3"
     media_dir: str = "/code/media"  # sirf local ke liye
@@ -39,6 +41,12 @@ class Settings(BaseSettings):
     payment_window_minutes: int = 15  # itne minute me payment na hui to order cancel ho jaata hai (stock wapas)
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @property
+    def push_enabled(self) -> bool:
+        import os
+
+        return bool(self.fcm_service_account_file) and os.path.isfile(self.fcm_service_account_file)
 
     @property
     def payments_enabled(self) -> bool:
