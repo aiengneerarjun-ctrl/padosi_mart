@@ -22,6 +22,18 @@ class SettlementSettings(Base):
     updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
 
+class OrderItemCommissionSnapshot(Base):
+    """Legacy order-item rules copied during migration without changing immutable order_items."""
+
+    __tablename__ = "order_item_commission_snapshots"
+
+    order_item_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("order_items.id"), primary_key=True)
+    commission_mode: Mapped[str] = mapped_column(String(10))
+    commission_unit: Mapped[str] = mapped_column(String(20))
+    commission_value: Mapped[Decimal] = mapped_column(Numeric(10, 4))
+    commission_unit_quantity: Mapped[Decimal] = mapped_column(Numeric(12, 4))
+
+
 class SellerPayout(Base):
     """Seller ke hisaab ka bahi-khaata: admin ne seller ko paisa diya (amount > 0) ya galti sudhaar (amount < 0, note zaroori).
     Rows kabhi badli / hataayi nahi jaati (database trigger). Seller ko dena baaki = kul bikri - commission - sum(amount)."""

@@ -1,17 +1,23 @@
 import uuid
+import asyncio
 
 from fastapi import Request
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import api_error
+from app.core import storage
 from app.models import Role, Seller, Store, User
 from app.models.seller import SellerStatus, SellerType, ShopStatus
 from app.schemas.seller import SellerApply
+from app.services.image_processing import ImageError, process_image
 from app.services.audit import write_audit
 
 
 async def apply(db: AsyncSession, user: User, body: SellerApply) -> Seller:
+    expected_type = SellerType.RESTAURANT if body.store_category == "RESTAURANT" else SellerType.KIRANA
+    if body.seller_type != expected_type:
+        raise api_error(422, "VALIDATION_ERROR", "Seller type selected dukaan category ke saath match nahi karta.")
     seller = await db.scalar(select(Seller).where(Seller.user_id == user.id))
     if seller and seller.status != SellerStatus.REJECTED:
         raise api_error(409, "SELLER_EXISTS", "Aapki seller application pehle se maujood hai.")
@@ -20,12 +26,37 @@ async def apply(db: AsyncSession, user: User, body: SellerApply) -> Seller:
         db.add(seller)
     # Reject hone ke baad dobara apply kar sakte hain (wahi row dobara PENDING hoti hai)
     seller.seller_type = body.seller_type.value
+    seller.store_category = body.store_category
     seller.business_name = body.business_name.strip()
     seller.owner_name = body.owner_name.strip()
     seller.status = SellerStatus.PENDING
     seller.status_reason = None
     await db.commit()
     await db.refresh(seller)
+    return seller
+
+
+async def upload_store_image(db: AsyncSession, seller: Seller, data: bytes) -> Seller:
+    try:
+        processed = await asyncio.to_thread(process_image, data)
+    except ImageError as exc:
+        raise api_error(exc.status, exc.code, exc.message)
+    key = f"seller-store-drafts/{seller.id}/{uuid.uuid4().hex}/medium.webp"
+    try:
+        await storage.put_object(key, processed.variants["medium"], "image/webp")
+    except storage.StorageError:
+        raise api_error(503, "STORAGE_UNAVAILABLE", "Photo storage abhi available nahi hai, dobara try karo.")
+    old_key = seller.store_image_key
+    seller.store_image_key = key
+    try:
+        await db.commit()
+        await db.refresh(seller)
+    except Exception:
+        await db.rollback()
+        await storage.delete_objects([key])
+        raise
+    if old_key:
+        await storage.delete_objects([old_key])
     return seller
 
 

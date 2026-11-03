@@ -88,9 +88,9 @@ async def available_orders(
     return await delivery_assignment.list_available(db, user, lat, lng, limit, offset, request.state.lang)
 
 
-@router.get("/orders/current", response_model=MyDeliveryOut)
+@router.get("/orders/current", response_model=list[MyDeliveryOut])
 async def current_order(request: Request, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Mera chalta hua order (customer ka address / phone ke saath)."""
+    """Mere saare chalte orders (har order ke customer details ke saath)."""
     return await delivery_assignment.current(db, user, request.state.lang)
 
 

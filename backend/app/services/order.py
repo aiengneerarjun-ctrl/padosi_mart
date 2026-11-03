@@ -135,6 +135,8 @@ async def place_order(db: AsyncSession, user: User, body: OrderCreate, idempoten
                     order_id=order.id, store_order_id=so.id, product_id=p.id, name=p.name, name_hi=p.name_hi,
                     name_bho=p.name_bho, selling_unit=p.selling_unit, mrp=p.mrp, unit_price=p.selling_price, quantity=q,
                     line_total=(p.selling_price * q).quantize(CENT),
+                    commission_mode=p.commission_mode, commission_unit=p.commission_unit,
+                    commission_value=p.commission_value, commission_unit_quantity=p.commission_unit_quantity,
                 )
             )
         db.add(_history(order.id, StoreOrderStatus.PLACED, user, "CUSTOMER", store_order_id=so.id))

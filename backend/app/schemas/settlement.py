@@ -5,6 +5,17 @@ from decimal import Decimal
 from pydantic import BaseModel, Field, model_validator
 
 
+class SettlementCommissionItemOut(BaseModel):
+    name: str
+    selling_unit: str
+    quantity: int
+    commission_mode: str
+    commission_unit: str
+    commission_value: float
+    commission_unit_quantity: float
+    commission_amount: float
+
+
 class SettlementOrderOut(BaseModel):
     order_id: uuid.UUID
     order_number: str
@@ -15,6 +26,7 @@ class SettlementOrderOut(BaseModel):
     seller_discount: float = 0.0  # seller-funded coupon me seller ka hissa
     net: float  # seller ko milega = items_subtotal - commission_amount - seller_discount
     delivered_at: datetime
+    commission_items: list[SettlementCommissionItemOut] = Field(default_factory=list)
 
 
 class SellerPayoutOut(BaseModel):
@@ -48,27 +60,6 @@ class AdminSettlementRowOut(BaseModel):
     due: float
 
 
-class SettlementRatesOut(BaseModel):
-    kirana_rate: float  # percent
-    restaurant_rate: float  # percent
-    updated_at: datetime
-
-
-class SettlementRateBody(BaseModel):
-    """Admin commission (percent) badalta hai. Jo bheja wahi badalta hai (kam se kam ek). Karan zaroori; audit log me jaata hai.
-    Naya rate sirf aage ki deliveries par lagta hai, purane hisaab nahi badalte."""
-
-    kirana_rate: Decimal | None = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
-    restaurant_rate: Decimal | None = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
-    reason: str = Field(min_length=3, max_length=300)
-
-    @model_validator(mode="after")
-    def _check(self):
-        if self.kirana_rate is None and self.restaurant_rate is None:
-            raise ValueError("kam se kam ek rate bhejo")
-        return self
-
-
 class SellerPayoutBody(BaseModel):
     """amount > 0: admin ne seller ko paisa diya. amount < 0: pehle ki galti sudhaar (note zaroori)."""
 
@@ -82,4 +73,18 @@ class SellerPayoutBody(BaseModel):
         self.note = (self.note or "").strip() or None
         if self.amount < 0 and self.note is None:
             raise ValueError("sudhaar ke liye note likhna zaroori hai")
+        return self
+
+
+class SettlementRateBody(BaseModel):
+    """Legacy payload validator retained for old clients/tests; store-wide rates are retired."""
+
+    kirana_rate: Decimal | None = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
+    restaurant_rate: Decimal | None = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
+    reason: str = Field(min_length=3, max_length=300)
+
+    @model_validator(mode="after")
+    def _check(self):
+        if self.kirana_rate is None and self.restaurant_rate is None:
+            raise ValueError("kam se kam ek rate bhejo")
         return self

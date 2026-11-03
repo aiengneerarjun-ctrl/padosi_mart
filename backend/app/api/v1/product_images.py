@@ -1,9 +1,11 @@
 import uuid
 
 from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_seller
+from app.core import storage
 from app.core.database import get_db
 from app.core.errors import api_error
 from app.models import Seller
@@ -13,6 +15,18 @@ from app.services.image_processing import MAX_UPLOAD_BYTES
 
 # Seller ki product photos. Har route ProductOut lautata hai (images + naya status ek saath).
 router = APIRouter(tags=["product-images"])
+
+
+@router.get("/media/{key:path}", include_in_schema=False)
+async def get_public_image(key: str):
+    """Proxy public S3 images through the API port used by Expo Go."""
+    try:
+        data = await storage.get_public_object(key)
+    except storage.StorageNotFound:
+        raise api_error(404, "IMAGE_NOT_FOUND", "Photo nahi mili.")
+    except storage.StorageError:
+        raise api_error(503, "STORAGE_UNAVAILABLE", "Photo storage abhi available nahi hai.")
+    return Response(content=data, media_type="image/webp", headers={"Cache-Control": "public, max-age=86400"})
 
 
 @router.post("/products/{product_id}/images", response_model=ProductOut, status_code=201)

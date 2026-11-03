@@ -11,7 +11,7 @@ from app.models.catalog import ProductStatus
 from app.schemas.catalog import (
     AdminCategoryOut, BrandCreate, BrandOut, BrandUpdate, CategoryCreate, CategoryUpdate,
 )
-from app.schemas.product import AdminProductOut, product_out
+from app.schemas.product import AdminProductOut, ProductCommissionBody, product_out
 from app.schemas.seller import ReasonBody
 from app.services import catalog as catalog_service
 from app.services import product as product_service
@@ -68,8 +68,13 @@ async def _admin_out(db: AsyncSession, product):
 
 
 @router.post("/products/{product_id}/approve", response_model=AdminProductOut)
-async def approve_product(product_id: uuid.UUID, request: Request, admin: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)):
-    return await _admin_out(db, await product_service.approve(db, admin, request, product_id))
+async def approve_product(product_id: uuid.UUID, body: ProductCommissionBody, request: Request, admin: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)):
+    return await _admin_out(db, await product_service.approve(db, admin, request, product_id, body))
+
+
+@router.patch("/products/{product_id}/commission", response_model=AdminProductOut)
+async def set_product_commission(product_id: uuid.UUID, body: ProductCommissionBody, request: Request, admin: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)):
+    return await _admin_out(db, await product_service.set_commission(db, admin, request, product_id, body))
 
 
 @router.post("/products/{product_id}/reject", response_model=AdminProductOut)

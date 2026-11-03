@@ -4,7 +4,7 @@ Rules:
 - Order customer ke order karte hi (CONFIRMED se) dikhta hai, aur sirf unhi partners ko jo NAZDEEK hain
   (partner se sabse paas wali dukaan NEARBY_RADIUS_KM ke andar). Partner ke area ke SAARE open orders dikhte hain.
 - Partner khud accept karta hai (pehle jo accept kare use milta hai). Sirf ACTIVE aur ONLINE partner.
-- Ek partner ke paas ek samay me ek hi chalta hua order (database index bhi yahi rokta hai).
+- Ek partner ek samay me kai orders le sakta hai; har order ka pickup / OTP alag rahega.
 - Accept ke baad dukaan abhi tayyari me ho to Order ka status nahi badalta; sab tayyar ho tab DELIVERY_ASSIGNED.
 - Pickup se pehle partner chhod sakta hai (release). Customer cancel / saari dukaanein reject / partner suspend:
   delivery apne aap free ho jaati hai.
@@ -183,8 +183,6 @@ async def accept(db: AsyncSession, user: User, order_id: uuid.UUID, lat: float, 
     if mine is not None:  # wahi order dobara accept: kuch nahi badalta (app retry safe)
         order = await _load_order(db, order_id, lock=False)
         return _my_delivery(mine, order, lang)
-    if await _my_live_delivery(db, partner.id) is not None:
-        raise api_error(409, "PARTNER_BUSY", "Pehle apna chal raha order poora karo.")
     await _require_under_cash_limit(db, partner)
 
     order = await _load_order(db, order_id, lock=True)  # seller / customer cancel ke saath line me
@@ -206,7 +204,7 @@ async def accept(db: AsyncSession, user: User, order_id: uuid.UUID, lat: float, 
     order.status = new_status
     try:
         await db.commit()
-    except IntegrityError:  # database ne rok diya (order ya partner pehle se busy)
+    except IntegrityError:  # database ne rok diya (order kisi aur partner ne pehle le liya)
         await db.rollback()
         raise api_error(409, "ORDER_NOT_AVAILABLE", "Ye order ab available nahi hai.")
     order = await _load_order(db, order_id, lock=False)
@@ -281,10 +279,15 @@ async def cancel_live_delivery(db: AsyncSession, order_id: uuid.UUID, reason: st
         delivery.release_reason = reason
 
 
-async def current(db: AsyncSession, user: User, lang: str) -> MyDeliveryOut:
+async def current(db: AsyncSession, user: User, lang: str) -> list[MyDeliveryOut]:
     partner = await _partner_for(db, user, lock=False)
-    delivery = await _my_live_delivery(db, partner.id)
-    if delivery is None:
-        raise api_error(404, "NO_ACTIVE_DELIVERY", "Abhi aapke paas koi order nahi hai.")
-    order = await _load_order(db, delivery.order_id, lock=False)
-    return _my_delivery(delivery, order, lang)
+    deliveries = await db.scalars(
+        select(Delivery).where(Delivery.partner_id == partner.id, Delivery.status.in_(ACTIVE_DELIVERY_STATUSES))
+        .order_by(Delivery.assigned_at, Delivery.id).execution_options(populate_existing=True)
+    )
+    result = []
+    for delivery in deliveries:
+        order = await _load_order(db, delivery.order_id, lock=False)
+        if order is not None:
+            result.append(_my_delivery(delivery, order, lang))
+    return result

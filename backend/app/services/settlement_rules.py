@@ -12,3 +12,13 @@ def rate_for_store_type(store_type: str | None, kirana_rate: Decimal, restaurant
 def commission_amount(items_subtotal, rate) -> Decimal:
     """Dukaan ki bikri x rate% (paise me, aadha paisa upar). Commission bikri se zyada kabhi nahi hota (rate <= 100)."""
     return (Decimal(str(items_subtotal)) * Decimal(str(rate)) / Decimal("100")).quantize(CENT, rounding=ROUND_HALF_UP)
+
+
+def product_commission(unit_price, quantity, mode, value, unit_quantity) -> Decimal:
+    """Ek product line ka commission; fixed rate basis quantity se, aur sale se zyada kabhi nahi."""
+    qty = Decimal(str(quantity))
+    sales = (Decimal(str(unit_price)) * qty).quantize(CENT, rounding=ROUND_HALF_UP)
+    if mode == "FIXED":
+        amount = Decimal(str(value)) * Decimal(str(unit_quantity)) * qty
+        return min(amount.quantize(CENT, rounding=ROUND_HALF_UP), sales)
+    return commission_amount(sales, value)

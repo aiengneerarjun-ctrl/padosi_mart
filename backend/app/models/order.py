@@ -180,6 +180,10 @@ class OrderItem(Base):
     unit_price: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     quantity: Mapped[int] = mapped_column(Integer)
     line_total: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    commission_mode: Mapped[str] = mapped_column(String(10), default="PERCENT", server_default="PERCENT")
+    commission_unit: Mapped[str] = mapped_column(String(20), default="SALE_UNIT", server_default="SALE_UNIT")
+    commission_value: Mapped[Decimal] = mapped_column(Numeric(10, 4), default=Decimal("0"), server_default="0")
+    commission_unit_quantity: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("1"), server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

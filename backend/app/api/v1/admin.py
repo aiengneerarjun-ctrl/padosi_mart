@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_super_admin
 from app.core.database import get_db
+from app.core.storage import public_url
 from app.models import AuditLog, Seller, User
 from app.models.seller import SellerStatus
 from app.schemas.audit import AuditLogOut
@@ -27,6 +28,8 @@ def _out(seller: Seller, phone: str) -> AdminSellerOut:
         user_id=seller.user_id,
         phone=phone,
         seller_type=seller.seller_type,
+        store_category=seller.store_category,
+        store_image_medium_url=public_url(seller.store_image_key) if seller.store_image_key else None,
         business_name=seller.business_name,
         owner_name=seller.owner_name,
         status=seller.status,

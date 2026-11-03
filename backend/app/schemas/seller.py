@@ -4,10 +4,12 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.seller import SellerType
+from app.schemas.store import StoreCategoryCode
 
 
 class SellerApply(BaseModel):
     seller_type: SellerType
+    store_category: StoreCategoryCode
     business_name: str = Field(min_length=2, max_length=150)
     owner_name: str = Field(min_length=2, max_length=100)
 
@@ -17,6 +19,8 @@ class SellerOut(BaseModel):
 
     id: uuid.UUID
     seller_type: str
+    store_category: str = "GROCERY"
+    store_image_medium_url: str | None = None
     business_name: str
     owner_name: str
     status: str

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import api_error
 from app.core.i18n import localized
+from app.core.storage import public_url
 from app.models import Cart, CartItem, Product, Seller, Store, User
 from app.models.cart import MAX_CART_ITEMS, MAX_STORE_GAP_KM
 from app.models.catalog import Category, ProductStatus
@@ -161,6 +162,7 @@ async def build_cart(db: AsyncSession, user: User, lat: float, lng: float, lang:
         out_groups.append(
             CartStoreGroup(
                 store_id=s.id, store_name=s.name, store_type=s.store_type, store_address=s.address,
+                store_category=s.store_category, image_medium_url=public_url(s.image_key) if s.image_key else None,
                 distance_km=g["distance"], items=g["items"], subtotal=float(g["subtotal"]),
         
             )

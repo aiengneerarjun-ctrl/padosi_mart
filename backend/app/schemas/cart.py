@@ -33,6 +33,8 @@ class CartStoreGroup(BaseModel):
     store_id: uuid.UUID
     store_name: str
     store_type: str
+    store_category: str
+    image_medium_url: str | None
     store_address: str
     distance_km: float  # customer se
     items: list[CartItemOut]

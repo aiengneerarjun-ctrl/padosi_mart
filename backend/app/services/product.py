@@ -9,7 +9,7 @@ from app.core.errors import api_error
 from app.models import Seller, Store, User
 from app.models.catalog import Brand, Category, Inventory, Product, ProductStatus, StockReason
 from app.models.seller import SellerStatus
-from app.schemas.product import ProductCreate, ProductUpdate, StockAdjust
+from app.schemas.product import ProductCommissionBody, ProductCreate, ProductUpdate, StockAdjust
 from app.services import inventory as inventory_service
 from app.services.audit import write_audit
 from app.services.store import get_owned_store
@@ -166,15 +166,59 @@ async def _admin_transition(
     return await load_product(db, product.id)
 
 
-async def approve(db: AsyncSession, admin: User, request: Request, product_id: uuid.UUID) -> Product:
+async def approve(db: AsyncSession, admin: User, request: Request, product_id: uuid.UUID, commission: ProductCommissionBody) -> Product:
     product = await load_product(db, product_id)
     if product is not None and not product.images:
         raise api_error(409, "PRODUCT_NEEDS_IMAGE", "Product me kam se kam ek photo zaroori hai.")
+    if product is None:
+        raise api_error(404, "PRODUCT_NOT_FOUND", "Product nahi mila.")
     qty = product.inventory.quantity if product and product.inventory else 0
+    old = {
+        "mode": product.commission_mode, "unit": product.commission_unit,
+        "value": str(product.commission_value), "unit_quantity": str(product.commission_unit_quantity),
+    }
+    product.commission_mode = commission.commission_mode
+    product.commission_unit = commission.commission_unit
+    product.commission_value = commission.commission_value
+    product.commission_unit_quantity = commission.commission_unit_quantity
+    write_audit(
+        db, actor=admin, action="product.set_commission", target_type="product", target_id=product.id,
+        old=old,
+        new={
+            "mode": commission.commission_mode, "unit": commission.commission_unit,
+            "value": str(commission.commission_value), "unit_quantity": str(commission.commission_unit_quantity),
+        },
+        reason="Product approval commission rule", request=request,
+    )
     return await _admin_transition(
         db, admin, request, product_id,
         allowed_from={ProductStatus.PENDING_APPROVAL}, to=_status_for_stock(qty), action="product.approve", reason=None,
     )
+
+
+async def set_commission(db: AsyncSession, admin: User, request: Request, product_id: uuid.UUID, commission: ProductCommissionBody) -> Product:
+    product = await load_product(db, product_id)
+    if product is None:
+        raise api_error(404, "PRODUCT_NOT_FOUND", "Product nahi mila.")
+    old = {
+        "mode": product.commission_mode, "unit": product.commission_unit,
+        "value": str(product.commission_value), "unit_quantity": str(product.commission_unit_quantity),
+    }
+    product.commission_mode = commission.commission_mode
+    product.commission_unit = commission.commission_unit
+    product.commission_value = commission.commission_value
+    product.commission_unit_quantity = commission.commission_unit_quantity
+    write_audit(
+        db, actor=admin, action="product.set_commission", target_type="product", target_id=product.id,
+        old=old,
+        new={
+            "mode": commission.commission_mode, "unit": commission.commission_unit,
+            "value": str(commission.commission_value), "unit_quantity": str(commission.commission_unit_quantity),
+        },
+        reason="Admin updated product commission", request=request,
+    )
+    await db.commit()
+    return await load_product(db, product.id)
 
 
 async def reject(db: AsyncSession, admin: User, request: Request, product_id: uuid.UUID, reason: str) -> Product:

@@ -8,25 +8,25 @@ from app.api.deps import require_super_admin
 from app.core.database import get_db
 from app.models import User
 from app.schemas.settlement import (
-    AdminSettlementRowOut, SellerPayoutBody, SettlementRateBody, SettlementRatesOut, SettlementSummaryOut,
+    AdminSettlementRowOut, SellerPayoutBody, SettlementRateBody, SettlementSummaryOut,
 )
 from app.services import settlement as service
+from app.core.errors import api_error
 
 # Is router ke SAARE routes sirf Super Admin ke liye (router level par).
 router = APIRouter(prefix="/admin/seller-settlements", tags=["admin-seller-settlements"], dependencies=[Depends(require_super_admin)])
 
 
-# NOTE: "/rates" ko "/{seller_id}" se pehle rakho (warna "rates" ko seller id samajh liya jaata).
-@router.get("/rates", response_model=SettlementRatesOut)
-async def get_rates(db: AsyncSession = Depends(get_db)):
-    """Abhi ka commission (percent): kirana aur restaurant ka."""
-    return await service.get_rates(db)
+@router.get("/rates")
+async def retired_rates_get():
+    """Legacy store-wide commission rates are retired; commissions are product-specific now."""
+    raise api_error(410, "LEGACY_COMMISSION_DISABLED", "Store-wise commission band ho chuka hai. Product-wise commission use karein.")
 
 
-@router.patch("/rates", response_model=SettlementRatesOut)
-async def set_rates(body: SettlementRateBody, request: Request, admin: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)):
-    """Commission badlo (jo bheja wahi badlega). Sirf aage ki deliveries par lagta hai. Karan zaroori, audit log banta hai."""
-    return await service.set_rates(db, admin, request, body.kirana_rate, body.restaurant_rate, body.reason)
+@router.patch("/rates")
+async def retired_rates_patch(body: SettlementRateBody):
+    """Keep the legacy path authenticated, but never change the retired store-wide rates."""
+    raise api_error(410, "LEGACY_COMMISSION_DISABLED", "Store-wise commission band ho chuka hai. Product-wise commission use karein.")
 
 
 @router.get("", response_model=list[AdminSettlementRowOut])

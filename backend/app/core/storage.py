@@ -117,6 +117,34 @@ async def put_object(key: str, data: bytes, content_type: str) -> None:
         raise StorageError(key) from exc
 
 
+async def get_public_object(key: str) -> bytes:
+    """Read a public image so mobile clients can use the API host/port."""
+    if not _use_s3():
+        try:
+            return await asyncio.to_thread(_local_read, key, settings.media_dir)
+        except StorageNotFound:
+            raise
+        except OSError as exc:
+            logger.error("local public object read failed for %s: %s", key, exc)
+            raise StorageError(key) from exc
+
+    from botocore.exceptions import BotoCoreError, ClientError
+
+    def _get() -> bytes:
+        return _s3().get_object(Bucket=settings.s3_bucket, Key=key)["Body"].read()
+
+    try:
+        return await asyncio.to_thread(_get)
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") in ("NoSuchKey", "404", "NotFound"):
+            raise StorageNotFound(key) from exc
+        logger.error("public object read failed for %s: %s", key, exc)
+        raise StorageError(key) from exc
+    except BotoCoreError as exc:
+        logger.error("public object read failed for %s: %s", key, exc)
+        raise StorageError(key) from exc
+
+
 async def delete_objects(keys: list[str]) -> None:
     """Best effort: fail ho to bas log likhta hai (extra file bachi rahegi, user ko error nahi)."""
     if not keys:

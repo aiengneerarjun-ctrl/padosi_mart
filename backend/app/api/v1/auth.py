@@ -11,6 +11,7 @@ from app.models import RefreshToken, User
 from app.schemas.auth import OtpRequest, OtpVerify, RefreshRequest, TokenPair
 from app.services import auth as auth_service
 from app.services import otp as otp_service
+from app.core.i18n import t
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

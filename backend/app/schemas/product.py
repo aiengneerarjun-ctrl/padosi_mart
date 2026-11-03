@@ -52,6 +52,23 @@ class ProductStatusBody(BaseModel):
     status: Literal["ACTIVE", "INACTIVE"]
 
 
+class ProductCommissionBody(BaseModel):
+    commission_mode: Literal["PERCENT", "FIXED"] = "PERCENT"
+    commission_unit: Literal[
+        "SALE_UNIT", "PIECE", "KG", "GRAM", "LITER", "ML", "BOTTLE",
+        "METER", "BOX", "BUNDLE", "PACKET", "DOZEN", "PLATE", "SERVING", "JAR", "SACHET",
+        "CAN", "CUP", "TRAY", "PAIR", "SET", "ROLL", "BAG", "POUCH", "DOSE", "CONTAINER", "TUB", "BASKET", "OTHER",
+    ] = "SALE_UNIT"
+    commission_value: Money = Field(ge=0, max_digits=10, decimal_places=4)
+    commission_unit_quantity: Decimal = Field(default=Decimal("1"), gt=0, max_digits=12, decimal_places=4)
+
+    @model_validator(mode="after")
+    def percentage_in_range(self):
+        if self.commission_mode == "PERCENT" and self.commission_value > 100:
+            raise ValueError("percentage commission 100 se zyada nahi ho sakta")
+        return self
+
+
 class StockAdjust(BaseModel):
     change: int = Field(ge=-1_000_000, le=1_000_000, description="+ stock aaya, - stock kam hua")
     reason: Literal["STOCK_IN", "ADJUSTMENT", "DAMAGED"] = "ADJUSTMENT"
@@ -92,6 +109,10 @@ class ProductOut(BaseModel):
     name_bho: str | None
     description: str | None
     selling_unit: str
+    commission_mode: str
+    commission_unit: str
+    commission_value: float
+    commission_unit_quantity: float
     mrp: float
     selling_price: float
     discount_percent: int
@@ -133,6 +154,10 @@ def product_out(p, store_name: str | None = None) -> ProductOut | AdminProductOu
     data = dict(
         id=p.id, store_id=p.store_id, category_id=p.category_id, brand_id=p.brand_id, sku=p.sku, barcode=p.barcode,
         name=p.name, name_hi=p.name_hi, name_bho=p.name_bho, description=p.description, selling_unit=p.selling_unit,
+        commission_mode=getattr(p, "commission_mode", "PERCENT"),
+        commission_unit=getattr(p, "commission_unit", "SALE_UNIT"),
+        commission_value=float(getattr(p, "commission_value", 0)),
+        commission_unit_quantity=float(getattr(p, "commission_unit_quantity", 1)),
         mrp=p.mrp, selling_price=p.selling_price, discount_percent=discount, status=p.status,
         status_reason=p.status_reason, stock=stock, low_stock=stock <= threshold,
         images=[image_out(i) for i in p.images], created_at=p.created_at,

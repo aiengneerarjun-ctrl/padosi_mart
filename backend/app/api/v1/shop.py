@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.schemas.discovery import ProductCard, ProductDetail, StoreCard, StoreCategory, StoreDetail, Suggestions
+from app.schemas.store import StoreCategoryCode
 from app.services import discovery
 
 # Customer ke browse routes. Login ke bina bhi chalte hain (app khulte hi dukaanein dikhni chahiye).
@@ -21,12 +22,12 @@ StoreType = Literal["KIRANA", "RESTAURANT"]
 
 @router.get("/stores", response_model=list[StoreCard])
 async def nearby_stores(
-    lat: Lat, lng: Lng, store_type: StoreType | None = None,
+    lat: Lat, lng: Lng, store_type: StoreType | None = None, store_category: StoreCategoryCode | None = None,
     q: Annotated[str | None, Query(min_length=1, max_length=60)] = None,
     limit: Limit = 20, offset: Offset = 0, db: AsyncSession = Depends(get_db),
 ):
     """Paas ki OPEN dukaanein/restaurants jo customer tak deliver karti hain, sabse paas wali pehle."""
-    return await discovery.nearby_stores(db, lat, lng, store_type=store_type, q=q, limit=limit, offset=offset)
+    return await discovery.nearby_stores(db, lat, lng, store_type=store_type, store_category=store_category, q=q, limit=limit, offset=offset)
 
 
 @router.get("/stores/{store_id}", response_model=StoreDetail)

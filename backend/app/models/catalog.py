@@ -69,6 +69,10 @@ class Product(Base):
     name_bho: Mapped[str | None] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(String(2000))
     selling_unit: Mapped[str] = mapped_column(String(50))  # "1 kg", "500 ml", "6 pcs"
+    commission_mode: Mapped[str] = mapped_column(String(10), default="PERCENT", server_default="PERCENT")
+    commission_unit: Mapped[str] = mapped_column(String(20), default="SALE_UNIT", server_default="SALE_UNIT")
+    commission_value: Mapped[Decimal] = mapped_column(Numeric(10, 4), default=Decimal("0"), server_default="0")
+    commission_unit_quantity: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("1"), server_default="1")
     mrp: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     selling_price: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     status: Mapped[str] = mapped_column(

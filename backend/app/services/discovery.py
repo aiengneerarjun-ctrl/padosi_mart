@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import contains_eager
 
 from app.core.errors import api_error
+from app.core.storage import public_url
 from app.core.i18n import localized
 from app.models import FavouriteProduct, FavouriteStore, Seller, Store
 from app.models.catalog import Brand, Category, Inventory, Product, ProductStatus
@@ -44,14 +45,19 @@ def distance_km_expr(lat: float, lng: float):
 
 
 def _brief(store: Store) -> StoreBrief:
-    return StoreBrief(id=store.id, name=store.name, store_type=store.store_type, cuisine=store.cuisine)
+    return StoreBrief(
+        id=store.id, name=store.name, store_type=store.store_type, store_category=store.store_category,
+        image_medium_url=public_url(f"{store.image_key}") if store.image_key else None, cuisine=store.cuisine,
+    )
 
 
 def _store_card(store: Store, distance: float) -> dict:
     d = round(float(distance), 1)
     return dict(
-        id=store.id, name=store.name, store_type=store.store_type, cuisine=store.cuisine,
-        description=store.description, distance_km=d, eta_minutes=estimate_eta(store.store_type, d),
+        id=store.id, name=store.name, store_type=store.store_type, store_category=store.store_category,
+        image_medium_url=public_url(store.image_key) if store.image_key else None,
+        cuisine=store.cuisine, description=store.description, distance_km=d,
+        eta_minutes=estimate_eta(store.store_type, d),
         min_order_amount=float(store.min_order_amount),
     )
 
@@ -66,7 +72,8 @@ def _has_sellable_product():
 
 
 async def nearby_stores(
-        db: AsyncSession, lat: float, lng: float, *, store_type: str | None, q: str | None, limit: int, offset: int,
+        db: AsyncSession, lat: float, lng: float, *, store_type: str | None, store_category: str | None = None,
+        q: str | None, limit: int, offset: int,
     favourite_of: uuid.UUID | None = None,
 ) -> list[StoreCard]:
     dist = distance_km_expr(lat, lng)
@@ -82,6 +89,8 @@ async def nearby_stores(
     )
     if store_type:
         query = query.where(Store.store_type == store_type)
+    if store_category:
+        query = query.where(Store.store_category == store_category)
     if favourite_of:  # sirf is customer ki pasandida dukaanein
         query = query.where(Store.id.in_(select(FavouriteStore.store_id).where(FavouriteStore.user_id == favourite_of)))
     if q:
@@ -183,6 +192,7 @@ async def list_products(
     db: AsyncSession, lat: float, lng: float, lang: str, *,
     q: str | None, category_id: uuid.UUID | None, brand_id: uuid.UUID | None, store_id: uuid.UUID | None,
     store_type: str | None, min_price: float | None, max_price: float | None, sort: Sort, limit: int, offset: int,
+    favourite_of: uuid.UUID | None = None,
 ) -> list[ProductCard]:
     query, dist = _eligible_products(lat, lng)
     if store_id:
@@ -257,4 +267,4 @@ async def suggest(db: AsyncSession, lat: float, lng: float, lang: str, q: str) -
         if len(names) == 8:
             break
     stores = await nearby_stores(db, lat, lng, store_type=None, q=q, limit=3, offset=0)
-    return names, [StoreBrief(id=s.id, name=s.name, store_type=s.store_type, cuisine=s.cuisine) for s in stores]
+    return names, [_brief(s) for s in stores]

@@ -1,81 +1,79 @@
-"""Seller ka hisaab: commission aur settlement.
+"""Seller ka hisaab: product commission aur manual settlement.
 
-- Delivery poori hote hi har (zinda) dukaan-hisse par platform ka commission likh diya jaata hai:
-  commission = dukaan ka items_subtotal (seller ke hataye items ke baad) x rate%. Rate dukaan ke type (KIRANA / RESTAURANT) se,
-  Super Admin tay karta hai. Baad me rate badle to purana hisaab nahi badalta. Fail / cancel / reject hue hisse par kuch nahi.
+- Delivery poori hote hi fulfilled order items par product approval snapshot se commission fix hota hai.
+  Percentage item sale par aur fixed rate selected unit quantity se lagta hai. Fail / cancel / reject hue hisse par kuch nahi.
 - Seller ko dena baaki = kul bikri - kul commission - admin ne jitna diya. Admin seller ko paisa deta hai aur "paid" entry likhta hai
   (seller_payouts, badalta nahi). Paid kabhi kamai se zyada nahi; galti hui to negative sudhaar + note.
 - COD cash ka hisaab alag hai (partner admin ko cash jama karta hai); seller ka paisa us cash se nahi kategta.
 Lock: seller row (payout likhte waqt), taaki do admin ek saath galat hisaab na likh dein.
 """
 import uuid
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import api_error
-from app.models import Delivery, Order, Seller, SellerPayout, SettlementSettings, Store, StoreOrder, User
+from app.models import Delivery, Order, OrderItem, OrderItemCommissionSnapshot, OrderItemRemoval, Seller, SellerPayout, StoreOrder, User
 from app.models.delivery import DeliveryStatus
 from app.models.order import StoreOrderStatus
 from app.schemas.settlement import (
-    AdminSettlementRowOut, SellerPayoutOut, SettlementOrderOut, SettlementRatesOut, SettlementSummaryOut,
+    AdminSettlementRowOut, SellerPayoutOut, SettlementCommissionItemOut, SettlementOrderOut, SettlementSummaryOut,
 )
 from app.services import notification
 from app.services.audit import write_audit
 from app.services.delivery_rules import deposit_problem
-from app.services.settlement_rules import commission_amount, rate_for_store_type
+from app.services.settlement_rules import product_commission
 
 INACTIVE = (StoreOrderStatus.REJECTED, StoreOrderStatus.CANCELLED)
 RECENT = 20
 
 
-async def _settings(db: AsyncSession, *, lock: bool = False) -> SettlementSettings | None:
-    q = select(SettlementSettings).where(SettlementSettings.id == 1).execution_options(populate_existing=True)
-    if lock:
-        q = q.with_for_update()
-    return await db.scalar(q)
+async def _commission_rules(db: AsyncSession, items: list[OrderItem]) -> dict[uuid.UUID, OrderItemCommissionSnapshot]:
+    if not items:
+        return {}
+    return {
+        row.order_item_id: row
+        for row in await db.scalars(
+            select(OrderItemCommissionSnapshot).where(OrderItemCommissionSnapshot.order_item_id.in_({i.id for i in items}))
+        )
+    }
+
+
+def _rule_for(item: OrderItem, snapshots: dict[uuid.UUID, OrderItemCommissionSnapshot]):
+    rule = snapshots.get(item.id)
+    return rule or item
 
 
 async def apply_commission(db: AsyncSession, order: Order) -> None:
-    """Delivery poori hone par (usi transaction me) har zinda dukaan-hisse par abhi ka commission fix karo. Pehle se likha ho to chhod do."""
-    s = await _settings(db)
+    """Delivered item quantities par product approval ke waqt snapshot hua commission fix karo."""
     live = [so for so in order.store_orders if so.status not in INACTIVE and so.commission_amount is None]
     if not live:
         return
-    types = dict((await db.execute(select(Store.id, Store.store_type).where(Store.id.in_({so.store_id for so in live})))).all())
     for so in live:
-        rate = rate_for_store_type(types.get(so.store_id), s.kirana_rate if s else Decimal("0"), s.restaurant_rate if s else Decimal("0"))
-        so.commission_rate = rate
-        so.commission_amount = commission_amount(so.items_subtotal, rate)
-
-
-async def get_rates(db: AsyncSession) -> SettlementRatesOut:
-    s = await _settings(db)
-    if s is None:
-        raise api_error(404, "NOT_FOUND", "Rate settings nahi mili.")
-    return SettlementRatesOut(kirana_rate=float(s.kirana_rate), restaurant_rate=float(s.restaurant_rate), updated_at=s.updated_at)
-
-
-async def set_rates(
-    db: AsyncSession, admin: User, request: Request, kirana_rate: Decimal | None, restaurant_rate: Decimal | None, reason: str
-) -> SettlementRatesOut:
-    s = await _settings(db, lock=True)
-    if s is None:
-        raise api_error(404, "NOT_FOUND", "Rate settings nahi mili.")
-    old = {"kirana_rate": str(s.kirana_rate), "restaurant_rate": str(s.restaurant_rate)}
-    if kirana_rate is not None:
-        s.kirana_rate = kirana_rate
-    if restaurant_rate is not None:
-        s.restaurant_rate = restaurant_rate
-    s.updated_by = admin.id
-    write_audit(
-        db, actor=admin, action="settlement.set_rates", target_type="settlement_settings", target_id="rates",
-        old=old, new={"kirana_rate": str(s.kirana_rate), "restaurant_rate": str(s.restaurant_rate)}, reason=reason, request=request,
-    )
-    await db.commit()
-    return await get_rates(db)
+        items = list(await db.scalars(select(OrderItem).where(OrderItem.store_order_id == so.id)))
+        removals = {
+            r.order_item_id: r for r in await db.scalars(
+                select(OrderItemRemoval).where(OrderItemRemoval.store_order_id == so.id)
+            )
+        }
+        snapshots = await _commission_rules(db, items)
+        total_commission = Decimal("0")
+        for item in items:
+            removed = removals.get(item.id)
+            # Partial removal creates a separate kept-item row; do not count its quantity twice.
+            fulfilled_qty = (0 if removed.kept_item_id else (removed.kept_quantity or 0)) if removed else item.quantity
+            rule = _rule_for(item, snapshots)
+            total_commission += product_commission(
+                item.unit_price, fulfilled_qty, rule.commission_mode, rule.commission_value, rule.commission_unit_quantity
+            )
+        so.commission_amount = total_commission.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        # Purane clients ke commission_rate field ko effective blended rate ke roop me bhejo.
+        so.commission_rate = (
+            (so.commission_amount * Decimal("100") / so.items_subtotal).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            if so.items_subtotal else Decimal("0")
+        )
 
 
 async def _totals(db: AsyncSession, seller_id: uuid.UUID) -> tuple[Decimal, Decimal, Decimal, Decimal]:
@@ -109,18 +107,38 @@ async def summary(db: AsyncSession, seller_id: uuid.UUID) -> SettlementSummaryOu
     payouts = (
         await db.scalars(select(SellerPayout).where(SellerPayout.seller_id == seller_id).order_by(SellerPayout.created_at.desc(), SellerPayout.id).limit(RECENT))
     ).all()
+    recent_orders = []
+    for so, order_no, delivered_at in rows:
+        items = list(so.items)
+        snapshots = await _commission_rules(db, items)
+        removals = {
+            r.order_item_id: r for r in await db.scalars(
+                select(OrderItemRemoval).where(OrderItemRemoval.store_order_id == so.id)
+            )
+        }
+        details = []
+        for item in items:
+            removed = removals.get(item.id)
+            qty = (0 if removed.kept_item_id else (removed.kept_quantity or 0)) if removed else item.quantity
+            rule = _rule_for(item, snapshots)
+            amount = product_commission(item.unit_price, qty, rule.commission_mode, rule.commission_value, rule.commission_unit_quantity)
+            if amount > 0:
+                details.append(SettlementCommissionItemOut(
+                    name=item.name, selling_unit=item.selling_unit, quantity=qty,
+                    commission_mode=rule.commission_mode, commission_unit=rule.commission_unit,
+                    commission_value=float(rule.commission_value), commission_unit_quantity=float(rule.commission_unit_quantity),
+                    commission_amount=float(amount),
+                ))
+        recent_orders.append(SettlementOrderOut(
+            order_id=so.order_id, order_number=f"PD{order_no}", store_name=so.store_name, items_subtotal=float(so.items_subtotal),
+            commission_rate=float(so.commission_rate or 0), commission_amount=float(so.commission_amount),
+            seller_discount=float(so.seller_discount), net=float(so.items_subtotal - so.commission_amount - so.seller_discount),
+            delivered_at=delivered_at, commission_items=details,
+        ))
     return SettlementSummaryOut(
         total_sales=float(sales), total_commission=float(commission), total_seller_discount=float(seller_discount),
         total_earned=float(earned), total_paid=float(paid), due=float(earned - paid),
-        recent_orders=[
-            SettlementOrderOut(
-                order_id=so.order_id, order_number=f"PD{order_no}", store_name=so.store_name, items_subtotal=float(so.items_subtotal),
-                commission_rate=float(so.commission_rate), commission_amount=float(so.commission_amount),
-                seller_discount=float(so.seller_discount), net=float(so.items_subtotal - so.commission_amount - so.seller_discount),
-                delivered_at=delivered_at,
-            )
-            for so, order_no, delivered_at in rows
-        ],
+        recent_orders=recent_orders,
         recent_payouts=[SellerPayoutOut(id=p.id, amount=float(p.amount), note=p.note, created_at=p.created_at) for p in payouts],
     )
 

@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import api_error
 from app.core.i18n import localized, translate
-from app.models import Delivery, Order, OrderItem, OrderStatusHistory, Seller, StoreOrder, User
+from app.models import Delivery, Order, OrderItem, OrderItemCommissionSnapshot, OrderStatusHistory, Seller, StoreOrder, User
 from app.models.catalog import StockReason
 from app.models.order import OrderItemRemoval, OrderStatus,PaymentMethod, PaymentStatus, RemovalReason, StoreOrderStatus
 from app.models.seller import SellerStatus
@@ -197,6 +197,11 @@ async def _remove_items(
     new = [i for i in so.items if i.id in picks and i.id not in already]
     if not new:
         return 0
+    rules = {
+        rule.order_item_id: rule for rule in await db.scalars(
+            select(OrderItemCommissionSnapshot).where(OrderItemCommissionSnapshot.order_item_id.in_({i.id for i in new}))
+        )
+    }
 
     # Stock: sirf wo piece wapas jo dukaan nahi de rahi; OUT_OF_STOCK ho to bacha hua bhi 0 (product_id ke order me, deadlock se bachne ke liye)
     per_product: dict[uuid.UUID, tuple[int, bool]] = {}
@@ -218,10 +223,13 @@ async def _remove_items(
         removed_amount += cut
         kept_item = None
         if kept:
+            rule = rules.get(i.id) or i
             kept_item = OrderItem(
                 id=uuid.uuid4(), order_id=order.id, store_order_id=so.id, product_id=i.product_id, name=i.name, name_hi=i.name_hi,
                 name_bho=i.name_bho, selling_unit=i.selling_unit, mrp=i.mrp, unit_price=i.unit_price, quantity=kept,
                 line_total=(i.unit_price * kept).quantize(CENT),
+                commission_mode=rule.commission_mode, commission_unit=rule.commission_unit,
+                commission_value=rule.commission_value, commission_unit_quantity=rule.commission_unit_quantity,
             )
             db.add(kept_item)
             so.items.append(kept_item)

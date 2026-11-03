@@ -11,6 +11,8 @@ class StoreBrief(BaseModel):
     id: uuid.UUID
     name: str
     store_type: str  # KIRANA ya RESTAURANT
+    store_category: str
+    image_medium_url: str | None
     cuisine: str | None
 
 
